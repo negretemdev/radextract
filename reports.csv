@@ -1,0 +1,361 @@
+report_id,report_text
+R001,"EXAM: CT chest without contrast.
+INDICATION: Follow-up of pulmonary nodule.
+TECHNIQUE: Non-contrast helical CT of the chest with 1.25 mm axial reconstructions.
+COMPARISON: CT chest dated 6 months prior.
+FINDINGS:
+Lungs: A 7 mm noncalcified solid nodule in the right upper lobe with smooth margins is unchanged from the prior examination. A 4 mm calcified granuloma in the left lower lobe. No ground-glass opacity or consolidation. Mild bibasilar atelectasis. No emphysema or bronchiectasis.
+Pleura: No pleural effusion or pneumothorax.
+Heart and vessels: Heart size is normal. No pericardial effusion. Mild coronary artery calcification. The thoracic aorta is normal in caliber.
+Mediastinum: No mediastinal or hilar lymphadenopathy. The thyroid gland is unremarkable.
+Upper abdomen: The visualized liver and adrenal glands are unremarkable.
+Bones: No acute fracture. No suspicious osseous lesion.
+IMPRESSION:
+1. Stable 7 mm right upper lobe nodule. Recommend follow-up CT chest in 12 months.
+2. Calcified granuloma in the left lower lobe."
+R002,"EXAM: CT chest with intravenous contrast.
+INDICATION: Chronic cough.
+TECHNIQUE: Helical CT of the chest after intravenous contrast with 2 mm axial reconstructions.
+COMPARISON: None.
+FINDINGS:
+Lungs: The lungs are clear. No pulmonary nodule, ground-glass opacity or consolidation. No atelectasis. No emphysema or bronchiectasis.
+Pleura: No pleural effusion or pneumothorax.
+Heart and vessels: Heart size is within normal limits. No pericardial effusion. No coronary artery calcification. The thoracic aorta is normal in caliber. The pulmonary arteries are normal in caliber.
+Mediastinum: No mediastinal or hilar lymphadenopathy. The thyroid gland is unremarkable.
+Upper abdomen: The visualized liver and adrenal glands are unremarkable.
+Bones: No suspicious osseous lesion. No rib fracture.
+IMPRESSION:
+Normal CT of the chest. No follow-up imaging is recommended."
+R003,"EXAM: CT pulmonary angiogram.
+INDICATION: Acute shortness of breath and pleuritic chest pain. Elevated D-dimer.
+TECHNIQUE: Helical CT of the chest during the pulmonary arterial phase of intravenous contrast enhancement.
+COMPARISON: Chest radiograph from the same day.
+FINDINGS:
+Pulmonary arteries: Filling defects within the right lower lobe segmental and subsegmental pulmonary arteries, consistent with acute pulmonary embolism. The main pulmonary artery is normal in caliber. No right heart strain.
+Lungs: Wedge-shaped peripheral consolidation in the right lower lobe, compatible with pulmonary infarct. No pulmonary nodules. No ground-glass opacity. Minimal dependent atelectasis in the left lower lobe. No emphysema.
+Pleura: Small right pleural effusion. No pneumothorax.
+Heart: Heart size is normal. No pericardial effusion.
+Mediastinum: No mediastinal or hilar lymphadenopathy. The thoracic aorta is normal in caliber.
+Upper abdomen: Unremarkable visualized liver and adrenal glands.
+Bones: No acute rib fracture.
+IMPRESSION:
+1. Acute right lower lobe segmental and subsegmental pulmonary embolism with associated pulmonary infarct.
+2. Small right pleural effusion."
+R004,"EXAM: CT chest without contrast.
+INDICATION: Lung cancer screening, 30 pack-year smoking history.
+TECHNIQUE: Low-dose non-contrast CT of the chest.
+COMPARISON: None available.
+FINDINGS:
+Lungs: The lungs are clear.
+Pleura: No pleural effusion or pneumothorax.
+Heart and vessels: Heart size is normal. No pericardial effusion. Mild coronary artery calcifications. Thoracic aorta is normal in caliber.
+Mediastinum: No significant mediastinal or hilar lymphadenopathy. The thyroid is unremarkable.
+Upper abdomen: Visualized liver and adrenal glands are within normal limits.
+Bones: No suspicious osseous lesion. No fracture.
+IMPRESSION:
+1. No pulmonary nodules. Lung-RADS category 1. Continue annual low-dose CT screening in 12 months.
+2. Coronary artery calcifications."
+R005,"EXAM: CT chest with intravenous contrast.
+INDICATION: Hemoptysis. Former smoker.
+TECHNIQUE: Helical CT of the chest after intravenous contrast.
+COMPARISON: None.
+FINDINGS:
+Lungs: A 2.4 x 1.8 cm spiculated solid nodule in the left upper lobe abutting the pleura. Two additional solid nodules: a 6 mm nodule in the left lower lobe and a 4 mm nodule in the right middle lobe. No ground-glass opacity or consolidation. Moderate centrilobular emphysema, upper lobe predominant. No bronchiectasis. No atelectasis.
+Pleura: No pleural effusion or pneumothorax.
+Heart and vessels: Heart size is normal. No pericardial effusion. Coronary artery calcifications are present. The thoracic aorta is normal in caliber.
+Mediastinum: Enlarged left hilar lymph node measuring 1.6 cm in short axis. Enlarged subcarinal lymph node measuring 1.3 cm in short axis. The thyroid gland is unremarkable.
+Upper abdomen: A 2.1 cm low-attenuation lesion in the right hepatic lobe, indeterminate. The adrenal glands are normal.
+Bones: No suspicious osseous lesion. No rib fracture.
+IMPRESSION:
+1. 2.4 cm spiculated left upper lobe nodule, suspicious for primary lung malignancy, with left hilar and subcarinal lymphadenopathy.
+2. Two additional small pulmonary nodules.
+3. Indeterminate 2.1 cm hepatic lesion.
+4. Recommend PET/CT for staging."
+R006,"EXAM: CT chest without contrast.
+INDICATION: Incidental finding on abdominal CT.
+TECHNIQUE: Non-contrast helical CT of the chest with thin-section reconstructions.
+COMPARISON: Abdominal CT 2 weeks prior, partially imaging the lung bases.
+FINDINGS:
+Lungs: A 9 mm pure ground-glass nodule in the right upper lobe with well-defined smooth margins, which may represent an early adenocarcinoma spectrum lesion or a focus of inflammation. No solid nodules. No consolidation. No atelectasis. No emphysema or bronchiectasis.
+Pleura: No pleural effusion. No pneumothorax.
+Heart: Heart size is normal. No pericardial effusion. No coronary artery calcification.
+Mediastinum: No mediastinal or hilar lymphadenopathy. A 1.4 cm hypodense nodule in the left lobe of the thyroid gland. The thoracic aorta is normal in caliber.
+Upper abdomen: The liver and adrenal glands are unremarkable.
+Bones: No rib fracture. No suspicious osseous lesion.
+IMPRESSION:
+1. 9 mm pure ground-glass nodule in the right upper lobe. Recommend follow-up CT in 6 months to assess persistence.
+2. 1.4 cm left thyroid nodule."
+R007,"CT of the chest was performed without intravenous contrast for evaluation of chronic dyspnea. There is moderate centrilobular and paraseptal emphysema with upper lobe predominance. Mild cylindrical bronchiectasis is present in the lower lobes bilaterally with associated bronchial wall thickening. No pulmonary nodule is identified. There is no consolidation or ground-glass opacity. No pleural effusion or pneumothorax. The heart is normal in size without pericardial effusion. There is no coronary artery calcification. The thoracic aorta is normal in caliber. No enlarged mediastinal or hilar lymph nodes. The thyroid gland, visualized liver and adrenal glands are unremarkable. No suspicious osseous lesion or fracture is seen. Overall, the findings reflect emphysema and mild lower lobe bronchiectasis without acute abnormality."
+R008,"EXAM: CT chest with intravenous contrast.
+INDICATION: Motor vehicle collision. Right-sided chest wall pain.
+TECHNIQUE: Helical CT of the chest after intravenous contrast with bone and lung window reconstructions.
+COMPARISON: None.
+FINDINGS:
+Lungs: Patchy ground-glass opacity in the right lower lobe, consistent with pulmonary contusion. No consolidation. No pulmonary nodules. Mild dependent atelectasis bilaterally. No emphysema.
+Pleura: Small right apical pneumothorax measuring 12 mm in maximal depth. No pleural effusion.
+Heart and vessels: Heart size is normal. No pericardial effusion. The thoracic aorta is normal in caliber without evidence of injury.
+Mediastinum: No mediastinal or hilar lymphadenopathy. No pneumomediastinum.
+Upper abdomen: The visualized liver is unremarkable. Adrenal glands are normal.
+Bones: Acute nondisplaced fractures of the right fourth, fifth and sixth ribs laterally. No other fracture. No suspicious osseous lesion.
+IMPRESSION:
+1. Small right pneumothorax.
+2. Acute right fourth through sixth rib fractures with underlying pulmonary contusion."
+R009,"EXAM: CT chest with intravenous contrast.
+INDICATION: History of pulmonary embolism on anticoagulation. Follow-up of left pleural effusion.
+TECHNIQUE: Helical CT of the chest after intravenous contrast in the portal venous phase.
+COMPARISON: CT chest 3 months prior.
+FINDINGS:
+Lungs: The previously seen left lower lobe atelectasis has improved. A 5 mm solid nodule in the right middle lobe is unchanged from the prior examination. No new nodules. No ground-glass opacity or consolidation. No emphysema.
+Pleura: The previously seen left pleural effusion has resolved. No pneumothorax.
+Heart and vessels: Mild cardiomegaly. Trace pericardial effusion. Coronary artery calcifications are present. The thoracic aorta is normal in caliber.
+Mediastinum: No mediastinal or hilar lymphadenopathy. Thyroid gland is unremarkable.
+Upper abdomen: A 12 mm simple cyst in the left hepatic lobe, unchanged. Adrenal glands are unremarkable.
+Bones: No suspicious osseous lesion. No fracture.
+IMPRESSION:
+1. Resolution of the left pleural effusion.
+2. Stable 5 mm right middle lobe nodule. No further follow-up is needed for this nodule.
+3. Mild cardiomegaly with trace pericardial effusion."
+R010,"EXAM: CT chest without contrast.
+INDICATION: Pulmonary nodule seen on chest radiograph.
+TECHNIQUE: Non-contrast helical CT of the chest with 1 mm reconstructions.
+COMPARISON: Chest radiograph 1 week prior. No prior CT.
+FINDINGS:
+Lungs: A 1.2 x 0.9 cm part-solid nodule in the left upper lobe with a 5 mm solid component and lobulated margins. No other nodules. No consolidation. No atelectasis. Mild paraseptal emphysema at the apices. No bronchiectasis.
+Pleura: No pleural effusion or pneumothorax.
+Heart and vessels: Heart size is normal. No pericardial effusion. No coronary artery calcification. The thoracic aorta is normal in caliber.
+Mediastinum: No mediastinal or hilar lymphadenopathy. The thyroid gland is unremarkable.
+Upper abdomen: A 1.8 cm low-attenuation nodule in the left adrenal gland, likely an adenoma. The liver is unremarkable.
+Bones: No suspicious osseous lesion. No fracture.
+IMPRESSION:
+1. 1.2 cm part-solid nodule in the left upper lobe. Recommend follow-up CT chest in 3 months.
+2. Probable left adrenal adenoma."
+R011,"EXAM: CT chest without contrast.
+INDICATION: Dyspnea. Pleural effusion on chest radiograph.
+TECHNIQUE: Non-contrast helical CT of the chest.
+COMPARISON: Chest radiograph 2 days prior.
+FINDINGS:
+Lungs: Compressive atelectasis of the right lower lobe adjacent to the effusion. No pulmonary nodule is identified. No ground-glass opacity or consolidation in the aerated lung. No emphysema or bronchiectasis.
+Pleura: Large right pleural effusion with simple fluid attenuation. No left pleural effusion. No pneumothorax.
+Heart and vessels: Heart size is normal. Small pericardial effusion. No coronary artery calcification. The thoracic aorta is ectatic, measuring 4.3 cm at the ascending segment.
+Mediastinum: Enlarged mediastinal lymph nodes, the largest a right paratracheal node measuring 1.5 cm in short axis. No hilar lymphadenopathy. Thyroid gland is unremarkable.
+Upper abdomen: The visualized liver and adrenal glands are unremarkable.
+Bones: No suspicious osseous lesion. No rib fracture."
+R012,"EXAM: CT chest without contrast.
+INDICATION: Preoperative evaluation.
+TECHNIQUE: Non-contrast helical CT of the chest.
+COMPARISON: None.
+FINDINGS:
+Lungs: No pulmonary nodules or masses. The lungs are without evidence of consolidation, ground-glass opacity or atelectasis. No emphysema. No bronchiectasis.
+Pleura: No pleural effusion. No pneumothorax.
+Heart and vessels: The heart size is within normal limits. No pericardial effusion. No coronary artery calcification. The thoracic aorta is within normal limits in caliber.
+Mediastinum: No mediastinal or hilar lymphadenopathy. The thyroid gland is within normal limits.
+Upper abdomen: The visualized liver and adrenal glands are within normal limits.
+Bones: No suspicious osseous lesion. No fracture.
+IMPRESSION:
+No acute or significant abnormality in the chest."
+R013,"EXAM: CT pulmonary angiogram.
+INDICATION: Fever, cough and hypoxia. Rule out pulmonary embolism.
+TECHNIQUE: Helical CT of the chest during the pulmonary arterial phase of contrast enhancement. Contrast opacification of the pulmonary arteries is adequate centrally but suboptimal in the lower lobe subsegmental branches due to respiratory motion.
+COMPARISON: None.
+FINDINGS:
+Pulmonary arteries: No filling defect in the main, lobar or segmental pulmonary arteries. A small subsegmental embolus in the lower lobes cannot be excluded given the motion artifact. The main pulmonary artery is normal in caliber.
+Lungs: Dense consolidation in the left lower lobe with air bronchograms, consistent with pneumonia. Surrounding ground-glass opacity. No pulmonary nodules. No emphysema.
+Pleura: Small left pleural effusion. No pneumothorax.
+Heart: Heart size is normal. No pericardial effusion.
+Mediastinum: Mildly enlarged left hilar lymph nodes, likely reactive, the largest measuring 1.2 cm in short axis. No mediastinal lymphadenopathy. The thoracic aorta is normal in caliber.
+Upper abdomen: The visualized liver and adrenal glands are unremarkable.
+Bones: No acute fracture. No suspicious osseous lesion.
+IMPRESSION:
+1. No evidence of pulmonary embolism, with limited evaluation of the lower lobe subsegmental arteries.
+2. Left lower lobe pneumonia with small parapneumonic effusion. Recommend follow-up chest radiograph in 2 months to document resolution.
+3. Mild left hilar lymphadenopathy, likely reactive."
+R014,"Non-contrast CT of the chest was obtained for evaluation of a nodule seen on an outside chest radiograph. Three calcified granulomas are present, measuring up to 6 mm, the largest in the right lower lobe. Calcified, nonenlarged right hilar lymph nodes are also noted, consistent with prior granulomatous infection. There are no noncalcified pulmonary nodules. No consolidation, ground-glass opacity or atelectasis. No significant emphysema. No bronchiectasis. No pleural effusion or pneumothorax. The heart is normal in size and there is no pericardial effusion. Coronary artery calcification is not identified. The thoracic aorta is normal in caliber. No enlarged mediastinal lymph nodes. The thyroid gland is unremarkable. The visualized upper abdominal organs are unremarkable. No suspicious osseous lesion or fracture. No follow-up imaging is required for the calcified granulomas."
+R015,"EXAM: CT chest with intravenous contrast.
+INDICATION: Surveillance of ascending aortic aneurysm. Remote history of rib fractures.
+TECHNIQUE: ECG-gated helical CT of the chest after intravenous contrast.
+COMPARISON: CT chest 12 months prior.
+FINDINGS:
+Lungs: No pulmonary nodules. No consolidation or ground-glass opacity. Mild dependent atelectasis. No emphysema.
+Pleura: No pleural effusion or pneumothorax.
+Heart and vessels: The ascending thoracic aorta is aneurysmal, measuring 4.8 cm in maximal diameter, unchanged from the prior examination. Moderate cardiomegaly. Moderate coronary artery calcifications. No pericardial effusion.
+Mediastinum: No mediastinal or hilar lymphadenopathy. The thyroid gland is unremarkable.
+Upper abdomen: No focal hepatic lesion. The adrenal glands are normal.
+Bones: No suspicious osseous lesion.
+IMPRESSION:
+1. Stable 4.8 cm ascending thoracic aortic aneurysm. Recommend continued annual surveillance with CT angiography in 12 months.
+2. Cardiomegaly and coronary artery calcifications."
+R016,"EXAM: CT chest with intravenous contrast.
+INDICATION: Weight loss and hemoptysis.
+TECHNIQUE: Helical CT of the chest after intravenous contrast.
+COMPARISON: None.
+FINDINGS:
+Lungs: A 4.2 x 3.6 cm irregular mass in the right lower lobe with central cavitation. Two satellite nodules in the right lower lobe measuring 8 mm and 5 mm. No ground-glass opacity. Postobstructive atelectasis of the right lower lobe. Mild centrilobular emphysema. No bronchiectasis.
+Pleura: Moderate right pleural effusion. No pneumothorax.
+Heart and vessels: Heart size is normal. No pericardial effusion. Coronary artery calcifications are present. The thoracic aorta is normal in caliber.
+Mediastinum: Enlarged right hilar lymph nodes up to 2.2 cm and enlarged subcarinal and right paratracheal lymph nodes up to 1.8 cm in short axis. The thyroid gland is unremarkable.
+Upper abdomen: Two hypoattenuating hepatic lesions measuring up to 2.5 cm, suspicious for metastases. The adrenal glands are normal.
+Bones: A 1.5 cm lytic lesion in the right seventh rib, suspicious for metastasis. No fracture.
+IMPRESSION:
+1. Cavitary right lower lobe mass with satellite nodules, hilar and mediastinal lymphadenopathy, hepatic lesions and a lytic rib lesion, highly concerning for metastatic lung cancer.
+2. Recommend tissue sampling by bronchoscopic or CT-guided biopsy."
+R017,"EXAM: Low-dose CT chest for lung cancer screening.
+INDICATION: Annual lung cancer screening. Current smoker.
+TECHNIQUE: Low-dose non-contrast CT of the chest.
+COMPARISON: Low-dose CT 12 months prior.
+FINDINGS:
+A new 0.4 cm solid nodule in the left lower lobe. No other nodules. Mild centrilobular emphysema, unchanged. No consolidation. No pleural effusion. Coronary artery calcification is present. No mediastinal lymphadenopathy.
+IMPRESSION:
+Lung-RADS category 2. Continue annual screening with low-dose CT in 12 months."
+R018,"EXAM: CT chest without contrast.
+INDICATION: Follow-up after chest tube removal for right pneumothorax.
+TECHNIQUE: Non-contrast helical CT of the chest.
+COMPARISON: CT chest 3 weeks prior.
+FINDINGS:
+Lungs: The right lung is fully expanded. Mild bronchiectasis in the right middle lobe with mucus plugging. Linear atelectasis at the right lung base. The lungs are without evidence of consolidation or ground-glass opacity. No pulmonary nodules. No emphysema.
+Pleura: The previously seen right pneumothorax has resolved. No pleural effusion. Mild right pleural thickening at the prior chest tube site.
+Heart and vessels: Heart size is normal. No pericardial effusion. The thoracic aorta is normal in caliber.
+Mediastinum: No mediastinal or hilar lymphadenopathy.
+Upper abdomen: The visualized upper abdomen is unremarkable.
+Bones: No rib fracture. No suspicious osseous lesion.
+IMPRESSION:
+1. Resolved right pneumothorax.
+2. Right middle lobe bronchiectasis with mucus plugging."
+R019,"CT of the chest with intravenous contrast was performed for postoperative fever following abdominal surgery. Bandlike opacity at the left lung base is most likely atelectasis. A small left pleural effusion is present. There is no right pleural effusion and no pneumothorax. No consolidation or ground-glass opacity elsewhere. No pulmonary nodules are identified. No emphysema. The heart is normal in size. There is no pericardial effusion. The thoracic aorta is normal in caliber. No enlarged mediastinal or hilar lymph nodes. A 1.1 cm nodule in the right lobe of the thyroid gland is incidentally noted and may represent a colloid nodule. Postoperative changes are noted in the visualized upper abdomen. The visualized liver and adrenal glands are unremarkable. No osseous lesion. No rib fracture. In summary, left basilar atelectasis with a small left pleural effusion, and no evidence of pneumonia."
+R020,"EXAM: CT chest without contrast.
+INDICATION: Cough and fever for 5 days.
+TECHNIQUE: Non-contrast helical CT of the chest.
+COMPARISON: None.
+FINDINGS:
+Lungs: Multifocal bilateral peripheral ground-glass opacities, most extensive in the lower lobes. No consolidation. No pulmonary nodules. No atelectasis. No emphysema or bronchiectasis.
+Pleura: No pleural effusion or pneumothorax.
+Heart and vessels: Heart size is normal. No pericardial effusion. No coronary artery calcification. Thoracic aorta is normal in caliber.
+Mediastinum: No significant mediastinal or hilar lymphadenopathy. The thyroid gland is unremarkable.
+Upper abdomen: The visualized liver and adrenal glands are unremarkable.
+Bones: No suspicious osseous lesion. No fracture.
+IMPRESSION:
+Multifocal bilateral ground-glass opacities, most consistent with viral pneumonia. Recommend follow-up CT in 3 months after treatment to confirm resolution."
+R021,"EXAM: CT chest with intravenous contrast.
+INDICATION: Abnormal chest radiograph.
+TECHNIQUE: Helical CT of the chest after intravenous contrast.
+COMPARISON: Chest radiograph 1 week prior.
+FINDINGS:
+Lungs: No pulmonary nodule or mass is identified. No consolidation, ground-glass opacity or atelectasis. No emphysema or bronchiectasis.
+Pleura: No pleural effusion or pneumothorax.
+Heart and vessels: Heart size is normal. No pericardial effusion. No coronary artery calcification. The thoracic aorta is normal in caliber.
+Mediastinum: No mediastinal or hilar lymphadenopathy. The thyroid gland is unremarkable.
+Upper abdomen: The visualized liver and adrenal glands are unremarkable.
+Bones: Degenerative changes of the thoracic spine. No suspicious osseous lesion. No fracture.
+IMPRESSION:
+No acute abnormality. The radiographic finding likely represented overlapping soft tissue."
+R022,"EXAM: CT pulmonary angiogram.
+INDICATION: Syncope and tachycardia.
+TECHNIQUE: Helical CT of the chest during the pulmonary arterial phase of contrast enhancement.
+COMPARISON: None.
+FINDINGS:
+Pulmonary arteries: Bilateral pulmonary emboli involving the right and left main pulmonary arteries and extending into the lobar branches. The right ventricle is dilated with a right ventricle to left ventricle ratio of 1.4, indicating right heart strain.
+Lungs: No consolidation or ground-glass opacity. No pulmonary nodules. Bibasilar atelectasis. No emphysema.
+Pleura: Trace bilateral pleural effusions. No pneumothorax.
+Heart: Cardiomegaly. Small pericardial effusion. Coronary artery calcifications are not identified.
+Mediastinum: No mediastinal or hilar lymphadenopathy. The thoracic aorta is normal in caliber. The thyroid gland is unremarkable.
+Upper abdomen: The liver is unremarkable. No adrenal nodule.
+Bones: No suspicious osseous lesion. No rib fracture.
+IMPRESSION:
+1. Bilateral central pulmonary emboli with CT evidence of right heart strain.
+2. Cardiomegaly and small pericardial effusion."
+R023,"EXAM: CT chest with intravenous contrast.
+INDICATION: Staging of newly diagnosed melanoma of the back.
+TECHNIQUE: Helical CT of the chest after intravenous contrast.
+COMPARISON: None.
+FINDINGS:
+Lungs: No pulmonary nodules. No consolidation or ground-glass opacity. No atelectasis. No emphysema.
+Pleura: No pleural effusion or pneumothorax.
+Heart and vessels: Heart size is normal. No pericardial effusion. No coronary artery calcification. The thoracic aorta is normal in caliber.
+Mediastinum: No mediastinal or hilar lymphadenopathy. No axillary lymphadenopathy. The thyroid gland is unremarkable.
+Upper abdomen: A 2.3 cm indeterminate nodule in the right adrenal gland. No focal hepatic lesion.
+Bones: No suspicious osseous lesion. No fracture.
+IMPRESSION:
+1. No evidence of thoracic metastatic disease.
+2. Indeterminate 2.3 cm right adrenal nodule. Recommend adrenal protocol MRI."
+R024,"EXAM: CT chest with intravenous contrast.
+INDICATION: Follow-up of pneumonia.
+TECHNIQUE: Helical CT of the chest after intravenous contrast.
+COMPARISON: CT chest 6 weeks prior.
+FINDINGS:
+Lungs: The previously seen right lower lobe consolidation has resolved. A new 6 mm ground-glass nodule in the right lower lobe. Mild residual atelectasis in the right lower lobe. No emphysema or bronchiectasis.
+Pleura: Interval development of a small left pleural effusion. No pneumothorax.
+Heart and vessels: Heart size is normal. No pericardial effusion. Mild coronary artery calcification. The thoracic aorta is normal in caliber.
+Mediastinum: The previously enlarged subcarinal lymph node has decreased in size but remains enlarged at 1.2 cm in short axis. No hilar lymphadenopathy. The thyroid gland is unremarkable.
+Upper abdomen: The visualized liver and adrenal glands are unremarkable.
+Bones: No suspicious osseous lesion. No fracture.
+IMPRESSION:
+1. Resolved right lower lobe pneumonia.
+2. New 6 mm right lower lobe ground-glass nodule, possibly infectious or inflammatory. Recommend follow-up CT in 3 months.
+3. New small left pleural effusion."
+R025,Chest CT without contrast was performed for evaluation of a persistent cough. The lungs are clear. There is no pleural effusion or pneumothorax. The heart is normal in size and there is no pericardial effusion. No coronary artery calcification is seen. The thoracic aorta is normal in caliber. There is no mediastinal or hilar lymphadenopathy. The thyroid gland is unremarkable. The visualized portions of the liver and adrenal glands are unremarkable. The bones are unremarkable. This is a normal CT of the chest and no follow-up imaging is needed.
+R026,"EXAM: CT chest with intravenous contrast.
+INDICATION: Nodule on chest radiograph.
+TECHNIQUE: Helical CT of the chest after intravenous contrast.
+COMPARISON: Chest radiograph 2 weeks prior.
+FINDINGS:
+Lungs: A 1.6 cm spiculated solid nodule in the right upper lobe without calcification. No additional nodules. No consolidation or ground-glass opacity. No atelectasis. Mild centrilobular emphysema. No bronchiectasis.
+Pleura: Pleural effusion is not identified. No pneumothorax.
+Heart and vessels: Heart size is normal. No pericardial effusion. No coronary artery calcification. The thoracic aorta is normal in caliber.
+Mediastinum: No mediastinal or hilar lymphadenopathy. The thyroid gland is unremarkable.
+Upper abdomen: The visualized liver and adrenal glands are unremarkable.
+Bones: No suspicious osseous lesion. No fracture.
+IMPRESSION:
+Spiculated 1.6 cm right upper lobe nodule, suspicious for primary bronchogenic carcinoma. Recommend PET/CT."
+R027,"EXAM: CT chest with intravenous contrast.
+INDICATION: Evaluation of pulmonary nodules seen on outside CT.
+TECHNIQUE: Helical CT of the chest after intravenous contrast with 1 mm reconstructions.
+COMPARISON: Outside CT 1 month prior, not available for direct comparison.
+FINDINGS:
+Lungs: Four solid noncalcified pulmonary nodules. The largest measures 8 x 6 mm in the left lower lobe with lobulated margins. The remaining nodules measure 3 to 5 mm and are scattered in both lungs. No ground-glass opacity or consolidation. No atelectasis. No emphysema. No bronchiectasis.
+Pleura: No pleural effusion or pneumothorax.
+Heart and vessels: Heart size is normal. No pericardial effusion. No coronary artery calcification. The thoracic aorta is normal in caliber.
+Mediastinum: Enlarged right hilar lymph node measuring 1.4 cm in short axis. No mediastinal lymphadenopathy. The thyroid gland is unremarkable.
+Upper abdomen: A 2 cm peripherally enhancing lesion in the right hepatic lobe, which may represent a hemangioma. No adrenal nodule.
+Bones: No suspicious osseous lesion. No fracture.
+Follow-up CT of the chest in 3 months is recommended."
+R028,"EXAM: CT chest without contrast.
+INDICATION: Left chest wall pain after a fall 4 weeks ago.
+TECHNIQUE: Non-contrast helical CT of the chest.
+COMPARISON: None.
+FINDINGS:
+Lungs: No pulmonary nodules. No consolidation or ground-glass opacity. Minimal atelectasis in the left lower lobe. No emphysema.
+Pleura: No pleural effusion or pneumothorax.
+Heart and vessels: Heart size is normal. No pericardial effusion. Coronary artery calcifications are present. The thoracic aorta is normal in caliber.
+Mediastinum: No mediastinal or hilar lymphadenopathy. The thyroid gland is unremarkable.
+Upper abdomen: The visualized liver and adrenal glands are unremarkable.
+Bones: Healing fracture of the left eighth rib with callus formation. A 9 mm sclerotic lesion in the T7 vertebral body, most consistent with a bone island.
+IMPRESSION:
+1. Healing left eighth rib fracture.
+2. Sclerotic T7 lesion, likely a benign bone island. No follow-up imaging is recommended for this finding."
+R029,"EXAM: CT chest without contrast.
+INDICATION: Known left thyroid nodule. Evaluate for pulmonary nodules.
+TECHNIQUE: Non-contrast helical CT of the chest.
+COMPARISON: None.
+FINDINGS:
+Lungs: A 5 mm calcified nodule in the right middle lobe, consistent with a granuloma. No noncalcified nodules. No consolidation or ground-glass opacity. No significant atelectasis. No emphysema or bronchiectasis.
+Pleura: No pleural effusion or pneumothorax.
+Heart and vessels: Heart size is normal. No pericardial effusion. No coronary artery calcification. The thoracic aorta is normal in caliber.
+Mediastinum: No mediastinal or hilar lymphadenopathy.
+Upper abdomen: The visualized liver and adrenal glands are unremarkable.
+Bones: No suspicious osseous lesion. No fracture.
+IMPRESSION:
+Calcified granuloma in the right middle lobe. No follow-up imaging is required."
+R030,"EXAM: CT pulmonary angiogram.
+INDICATION: Chest pain. Elevated D-dimer. Smoker.
+TECHNIQUE: Helical CT of the chest during the pulmonary arterial phase of contrast enhancement. Contrast opacification of the pulmonary arteries is excellent.
+COMPARISON: None.
+FINDINGS:
+Pulmonary arteries: The pulmonary arteries are well opacified without evidence of pulmonary embolism. The main pulmonary artery is normal in caliber.
+Lungs: A 3 mm nodule in the lingula of the left lung. No other nodules. No consolidation, ground-glass opacity or atelectasis. Mild paraseptal emphysema. No bronchiectasis.
+Pleura: No pleural effusion or pneumothorax.
+Heart: Heart size is normal. No pericardial effusion. No coronary artery calcification.
+Mediastinum: No mediastinal or hilar lymphadenopathy. The thoracic aorta is normal in caliber. The thyroid gland is unremarkable.
+Upper abdomen: The visualized liver and adrenal glands are unremarkable.
+Bones: No suspicious osseous lesion. No fracture.
+IMPRESSION:
+1. No pulmonary embolism.
+2. 3 mm lingular nodule. Given the smoking history, follow-up CT in 12 months is recommended."

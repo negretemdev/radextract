@@ -1,0 +1,9 @@
+[project]
+name = "radextract"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "ollama>=0.6.2",
+    "pandas>=3.0.5",
+    "pydantic>=2.13.5",
+]
