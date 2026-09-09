@@ -205,3 +205,31 @@ Per-field agreement between the three models (run 1) is in the `agreement_betwee
 | Mean latency (cloud, throttled) | 22 s | 23 s | 23 s |
 
 gemma4:31b vs gpt-oss:20b: **0 disputed fields in 0 of 30 reports** (3-state schema: 28 disputed fields in 19 of 30 reports). The 3-state disputes were almost entirely `absent` vs `not_mentioned`, `no` vs `not_stated` and inferred nodule attributes; the binary schema has none of those distinctions, so they disappear, and the one genuine 3-state misread (a resolved consolidation called present) did not recur. On this synthetic set a third-model tiebreaker has nothing to do; on real reports, disagreement rows are the ones to read.
+
+## Ambiguous set: R031–R050
+
+Twenty more synthetic reports written to be hard: dictation-style run-on text and abbreviations (RUL, PTX, GGO, LAD, nl), lowercase headers and typos, impression-before-findings, a CONCLUSION instead of IMPRESSION, an ADDENDUM that adds a nodule, findings that contradict the impression (effusion in FINDINGS, "no pleural effusion" in IMPRESSION), and hedges everywhere: "questionable", "equivocal", "possible ... favored to be artifact", "not entirely excluded", "atelectasis versus early consolidation", "bulla versus pneumothorax", "borderline enlarged", "prominent but not pathologically enlarged", "near-complete resolution ... residual", "trace ... physiologic", "no significant effusion; trace fluid", conditional follow-up ("could be considered", "could be obtained"), and findings mentioned only in the indication or comparison line.
+
+Ground-truth conventions for the hard set, applied on top of the prompt rules (the `chest_ct` ground truth covers R001–R030 only; the binary ground truth covers all 50):
+
+- "X versus Y", "questionable X", "equivocal X", "possible X" at a described location: `true` (an abnormality is described; the hedge is interpretation).
+- "no definite X ... favored to be artifact", "not entirely excluded", "cannot be excluded": `false`.
+- "borderline enlarged" node: `true`; "prominent but not pathologically enlarged", "subcentimeter", "small nonspecific nodes": `false`.
+- "near-complete resolution" with residual tissue, "decreased and now small", "trace, physiologic": `true`; "interval resolution", "normalized", "resolved": `false`.
+- Findings and impression contradict each other: the FINDINGS description wins.
+- Conditional follow-up wording ("could be considered", "could be obtained", "could help differentiate", "continue annual screening"): `true`; "attention on follow-up imaging", "correlate clinically", "discussed with the team", "per Fleischner no follow-up": `false`.
+- Not the finding: hyperinflation is not emphysema, bronchial wall thickening is not bronchiectasis, steatosis and hepatic congestion are not hepatic lesions, adrenal thickening without a nodule is not an adrenal nodule, a heterogeneous thyroid is not a thyroid nodule, a compression deformity is neither an osseous lesion nor a rib fracture. A liver laceration is a focal hepatic lesion.
+
+### Splitting false into two booleans
+
+`false` currently merges "explicitly negated" and "not mentioned". For filtering on `true` that never matters, and the quote column already separates the two cases (a `false` with a quote was negated, without one it was silent). Measured on the 30 clean reports: the `present` field had 0 disputes between gemma4:31b and gpt-oss:20b, but a would-be `negated` boolean disagreed on 43 of the 529 agreed-false fields (8%), with gemma matching the ground truth 99.8% of the time and gpt-oss:20b 92%. So if that distinction is needed, add it as a second boolean (`negated: true/false`) and score it separately; it must not take part in the agreement check on `present`.
+
+### Results on the ambiguous set (binary schema, cloud models)
+
+| Metric | gemma4:31b-cloud | gpt-oss:20b-cloud | gpt-oss:120b-cloud |
+|---|---|---|---|
+| Valid JSON | 20/20 | 20/20 | 20/20 |
+| Accuracy vs ground truth (420 values) | 99.3% | 98.3% | 98.8% |
+| Quotes verbatim | 98.9% | 99.7% | 99.0% |
+
+gemma4:31b vs gpt-oss:20b on the hard 20: **6 disputed fields in 5 of 20 reports** (1.4% of fields; 4 reports with one field, 1 with two). Where the two agreed, 412 of 414 values were correct; the two agreed-wrong values are both "attention on follow-up imaging" read as a recommendation, which all three models did, so that ground-truth convention is the outlier rather than the models. On the disputes gemma was right 5 times and gpt-oss:20b once. gpt-oss:20b's misses were the classic traps: it let the impression's "No acute pulmonary embolism" override the chronic thromboembolic disease described in the findings, let "no pleural effusion" in the impression override the effusion in the findings, counted "prominent but not pathologically enlarged" nodes as lymphadenopathy, and counted a healing rib fracture as an osseous lesion. Majority vote with the 120B as tiebreaker scores 99.3%, the same as gemma alone. Over all 50 reports the two primaries disagree on 6 of 1,050 fields (0.6%).
