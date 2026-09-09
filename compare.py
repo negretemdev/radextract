@@ -45,12 +45,19 @@ def main():
     disputes_per_field = {field: 0 for field in fields}
     agreed_total = agreed_correct = 0
     first_right = second_right = both_wrong = 0
+    errors_total = {models[0]: 0, models[1]: 0}
+    errors_caught = {models[0]: 0, models[1]: 0}
     for report_id in report_ids:
         disputed_fields = []
         details = []
         for field in fields:
             value_first = first.at[report_id, field]
             value_second = second.at[report_id, field]
+            if truth is not None:
+                for model, value in ((models[0], value_first), (models[1], value_second)):
+                    if not values_match(field, value, truth.at[report_id, field]):
+                        errors_total[model] += 1
+                        errors_caught[model] += not values_match(field, value_first, value_second)
             if values_match(field, value_first, value_second):
                 if truth is not None:
                     agreed_total += 1
@@ -89,6 +96,9 @@ def main():
     if truth is not None:
         print(f"\naccuracy where the models agree: {agreed_correct}/{agreed_total} = {agreed_correct / max(agreed_total, 1):.1%}")
         print(f"on disputed fields: {models[0]} right {first_right}, {models[1]} right {second_right}, both wrong {both_wrong}")
+        for model in models:
+            print(f"{model} errors caught by disagreement: {errors_caught[model]}/{errors_total[model]}"
+                  f" (the rest are errors both models share)")
     print(f"\nWrote {args.output}")
 
 
