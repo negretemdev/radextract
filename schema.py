@@ -145,3 +145,26 @@ def build_messages(report_text: str, include_schema: bool) -> list[dict]:
         {"role": "system", "content": system_prompt},
         {"role": "user", "content": "Extract the findings from this report:\n\n" + report_text},
     ]
+
+
+FLAT_COLUMNS = [f"{name}_{suffix}" for name in FINDING_NAMES for suffix in ("status", "evidence")]
+FLAT_COLUMNS.append("nodule_count")
+FLAT_COLUMNS += [f"largest_nodule_{field}" for field in LargestNodule.model_fields]
+FLAT_COLUMNS += [f"follow_up_{field}" for field in FollowUp.model_fields]
+SCORED_FIELDS = [column for column in FLAT_COLUMNS if not column.endswith("_evidence")]
+NUMERIC_FIELDS = {"nodule_count", "largest_nodule_size_mm", "follow_up_interval_months"}
+GROUND_TRUTH_FILE = "ground_truth.csv"
+
+
+def flatten(extraction: ReportExtraction) -> dict:
+    """One flat row per extraction, in FLAT_COLUMNS order."""
+    row = {}
+    for name in FINDING_NAMES:
+        observation = getattr(extraction, name)
+        row[f"{name}_status"] = observation.status
+        row[f"{name}_evidence"] = observation.evidence
+    row["nodule_count"] = extraction.nodule_count
+    for prefix, part in (("largest_nodule", extraction.largest_nodule), ("follow_up", extraction.follow_up)):
+        for field, value in part.model_dump().items():
+            row[f"{prefix}_{field}"] = value
+    return row

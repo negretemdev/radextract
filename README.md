@@ -9,13 +9,16 @@ report text rather than trusting the model.
 
 | File | Purpose |
 |---|---|
-| `schema.py` | Pydantic models (`Observation`, `LargestNodule`, `FollowUp`, `ReportExtraction`) and the extraction prompt. Adding a finding is one line in `ReportExtraction`; both scripts discover the `Observation` fields at runtime. |
-| `extract.py` | Runs models over `reports.csv`, writes `results.csv` (one row per report, model and run) and one raw JSON per call in `raw/`. |
-| `evaluate.py` | Scores `results.csv` against `ground_truth.csv`, writes `summary.csv`. |
+| `schema.py` | Schema `chest_ct`: Pydantic models (`Observation` with a 3-state status, `LargestNodule`, `FollowUp`, `ReportExtraction`) and the extraction prompt. Adding a finding is one line in `ReportExtraction`; the scripts discover the fields at runtime. |
+| `schema_binary.py` | Schema `binary`: the same 20 findings plus `follow_up_recommended`, each a `BinaryObservation` (`present: bool` + quote). false covers both negated and not mentioned. |
+| `extract.py` | Runs models over `reports.csv`, writes `results.csv` (one row per report, model and run) and one raw JSON per call in `raw/{schema}/`. `--schema chest_ct` (default) or `--schema binary`. |
+| `evaluate.py` | Scores `results.csv` against the schema's ground truth, writes `summary.csv`. |
+| `compare.py` | Field-by-field disagreement between two models, writes `disputed.csv`; quotes are ignored on purpose. |
 | `reports.csv` | 30 synthetic chest CT reports (`report_id`, `report_text`). Fictional, no patient identifiers. |
-| `ground_truth.csv` | Hand-filled reference value for every schema field of every report (53 columns). |
+| `ground_truth.csv` | Hand-filled reference value for every `chest_ct` field of every report (53 columns). |
+| `ground_truth_binary.csv` | The same reference collapsed to true/false per finding (derived from `ground_truth.csv`). |
 
-`.venv/`, `raw/`, `results.csv` and `summary.csv` are gitignored.
+`.venv/`, `raw/`, `results*.csv`, `summary*.csv` and `disputed*.csv` are gitignored.
 
 ## Windows setup (RTX 4090 Laptop GPU, 16 GB VRAM, 96 GB RAM)
 
@@ -38,6 +41,10 @@ report text rather than trusting the model.
    uv run evaluate.py --results results.csv --ground-truth ground_truth.csv --output summary.csv
    ```
    Add `--runs 3` to measure determinism. Model tags are always runtime arguments; nothing is hardcoded.
+   For the binary schema add `--schema binary` to both commands (evaluate then scores against `ground_truth_binary.csv`), and to see where two models disagree:
+   ```
+   uv run compare.py --results results.csv --schema binary --models gemma4:26b gpt-oss:20b --ground-truth ground_truth_binary.csv
+   ```
 
 ### extract.py options
 
@@ -46,13 +53,15 @@ report text rather than trusting the model.
 | `--input` | `reports.csv` | CSV with `report_id`, `report_text` |
 | `--output` | `results.csv` | rewritten after every completed call |
 | `--models` | required | one or more Ollama tags |
+| `--schema` | `chest_ct` | `chest_ct` or `binary` |
+| `--ids` | all | CSV with a `report_id` column: run only those reports |
 | `--runs` | `1` | repeat each report N times (determinism) |
 | `--host` | `http://localhost:11434` | Ollama server |
 | `--limit` | all | only the first N reports |
 | `--force` | off | re-run even if the raw file exists |
 | `--allow-cloud` | off | permit `*-cloud` / `*:cloud` tags (synthetic data only) |
 
-Resume: a call is skipped when `raw/{model}_{report_id}_{run}.json` already exists, and its row is rebuilt from that file (the evidence check runs again at rebuild time). Delete a raw file or pass `--force` to redo a call.
+Resume: a call is skipped when `raw/{schema}/{model}_{report_id}_{run}.json` already exists, and its row is rebuilt from that file (the evidence check runs again at rebuild time). Delete a raw file or pass `--force` to redo a call.
 
 ### 16 GB VRAM notes
 
@@ -101,7 +110,7 @@ The prompt in `schema.py` states these rules; the ground truth was filled by han
 ## Things I had to work around
 
 1. **Ollama cloud ignores `format=` schemas.** On `gpt-oss:120b-cloud` with `think="medium"`, passing `ReportExtraction.model_json_schema()` as `format` was silently not enforced: the model invented its own keys and 17 required fields were missing. `gemma4:31b-cloud` did the same (12 required fields missing, fenced JSON), so this is a cloud limitation, not a gpt-oss one. The same calls with no `format` and the JSON schema pasted into the system prompt returned valid extractions. `uses_constrained_format()` in `extract.py` therefore sends every cloud tag through prompt-only JSON (code fences are stripped), and `PROMPT_ONLY_JSON_MODEL_PREFIXES = ("gpt-oss",)` keeps local gpt-oss prompt-only as well, since that path is proven at `think="medium"`. Local gemma gets constrained `format` with the short prompt. To try constrained mode on the local gpt-oss:20b, set that tuple to `()` and compare `valid_json_rate`.
-2. **Windows file names.** Model tags contain `:` (illegal in Windows file names), so the raw file name sanitizes the tag: `gpt-oss:20b` → `raw/gpt-oss_20b_R001_1.json`.
+2. **Windows file names.** Model tags contain `:` (illegal in Windows file names), so the raw file name sanitizes the tag: `gpt-oss:20b` → `raw/chest_ct/gpt-oss_20b_R001_1.json`.
 3. **Quotes are the weak spot, not statuses.** Even with correct statuses the model rewrites shared negations ("No emphysema or bronchiectasis." quoted as "No bronchiectasis") or splices with "..." ("The visualized liver ... are unremarkable."). The prompt now demands one contiguous span; the `evidence_ok` check catches the rest.
 4. **The cloud model is not deterministic even at temperature 0, seed 42.** Three calls on the same report gave identical statuses and values but different quotes each time (0 to 3 `evidence_ok` failures). That is why `summary.csv` reports `identical_runs_rate` and `identical_runs_rate_with_evidence` separately. Local llama.cpp inference should be more deterministic; `--runs 3` will show.
 5. **pandas 3.** Strings are a real `str` dtype, empty CSV cells read back as NaN, and `astype(str)` keeps NaN as missing, so comparisons across runs and models use `nunique(dropna=False)`. Reports are read with `dtype=str, keep_default_na=False` so a report is never NaN.
@@ -183,3 +192,16 @@ What the errors were:
 - Gemma's one status error is arguable: "The pulmonary arteries are normal in caliber." read as `absent` for pulmonary embolism (ground truth `not_mentioned`).
 
 Per-field agreement between the three models (run 1) is in the `agreement_between_models` column of `summary.csv`; the least agreed fields were `largest_nodule_calcified` (83%), `adrenal_nodule_status` (87%) and `pulmonary_embolism_status`, `hepatic_lesion_status`, `follow_up_recommended` (90%).
+
+## Binary schema: same 30 reports, same three cloud models
+
+`--schema binary` collapses every finding to `present: true/false` (false = negated or not mentioned) and adds `follow_up_recommended` as a 21st boolean. Quotes are still recorded and checked, but `compare.py` ignores them by design.
+
+| Metric | gemma4:31b-cloud | gpt-oss:20b-cloud | gpt-oss:120b-cloud |
+|---|---|---|---|
+| Valid JSON | 30/30 | 30/30 | 30/30 (two reports needed a retry) |
+| Accuracy vs ground truth (630 values) | 100% | 100% | 100% |
+| Quotes verbatim (`evidence_ok`) | 98.7% | 94.3% | 94.0% |
+| Mean latency (cloud, throttled) | 22 s | 23 s | 23 s |
+
+gemma4:31b vs gpt-oss:20b: **0 disputed fields in 0 of 30 reports** (3-state schema: 28 disputed fields in 19 of 30 reports). The 3-state disputes were almost entirely `absent` vs `not_mentioned`, `no` vs `not_stated` and inferred nodule attributes; the binary schema has none of those distinctions, so they disappear, and the one genuine 3-state misread (a resolved consolidation called present) did not recur. On this synthetic set a third-model tiebreaker has nothing to do; on real reports, disagreement rows are the ones to read.

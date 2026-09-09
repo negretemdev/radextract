@@ -4,3 +4,6 @@ results.csv
 summary.csv
 __pycache__/
 *.pyc
+results*.csv
+summary*.csv
+disputed*.csv

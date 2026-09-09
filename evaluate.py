@@ -8,22 +8,14 @@ Evidence text is not compared with the ground truth: it is scored by the evidenc
 """
 
 import argparse
+import importlib
 import sys
 from pathlib import Path
 
 import pandas as pd
 
-from schema import FINDING_NAMES, FollowUp, LargestNodule
-
+SCHEMAS = {"chest_ct": "schema", "binary": "schema_binary"}
 NUMERIC_FIELDS = {"nodule_count", "largest_nodule_size_mm", "follow_up_interval_months"}
-
-
-def scored_fields() -> list[str]:
-    fields = [f"{name}_status" for name in FINDING_NAMES]
-    fields.append("nodule_count")
-    fields += [f"largest_nodule_{field}" for field in LargestNodule.model_fields if field != "evidence"]
-    fields += [f"follow_up_{field}" for field in FollowUp.model_fields if field != "evidence"]
-    return fields
 
 
 def values_match(field: str, predicted, truth) -> bool:
@@ -39,19 +31,22 @@ def values_match(field: str, predicted, truth) -> bool:
 def main():
     parser = argparse.ArgumentParser(description="Score extraction results against the ground truth.")
     parser.add_argument("--results", type=Path, default=Path("results.csv"))
-    parser.add_argument("--ground-truth", type=Path, default=Path("ground_truth.csv"))
+    parser.add_argument("--schema", choices=SCHEMAS, default="chest_ct")
+    parser.add_argument("--ground-truth", type=Path, default=None, help="defaults to the schema's ground truth file")
     parser.add_argument("--output", type=Path, default=Path("summary.csv"))
     args = parser.parse_args()
 
+    schema = importlib.import_module(SCHEMAS[args.schema])
+    ground_truth_path = args.ground_truth or Path(schema.GROUND_TRUTH_FILE)
     results = pd.read_csv(args.results, dtype={"report_id": str})
-    truth = pd.read_csv(args.ground_truth, dtype={"report_id": str}).set_index("report_id")
+    truth = pd.read_csv(ground_truth_path, dtype={"report_id": str}).set_index("report_id")
     if results.empty:
         sys.exit(f"ERROR: {args.results} has no rows")
     missing = sorted(set(results["report_id"]) - set(truth.index))
     if missing:
         sys.exit(f"ERROR: no ground truth for report_id(s): {', '.join(missing)}")
 
-    fields = scored_fields()
+    fields = schema.SCORED_FIELDS
     models = list(dict.fromkeys(results["model"]))
     number_of_runs = int(results["run"].max())
 

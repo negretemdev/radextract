@@ -1,10 +1,13 @@
 """Run Ollama models over chest CT reports and write one CSV row per (report_id, model, run).
 
-Every raw model response is saved to raw/{model}_{report_id}_{run}.json (model tag sanitized for
-Windows file names). Existing raw files are reused unless --force is given, so interrupted runs resume.
+--schema picks the extraction schema: chest_ct (schema.py: 3-state status per finding plus nodule and
+follow-up details) or binary (schema_binary.py: true/false per finding). Every raw model response is
+saved to raw/{schema}/{model}_{report_id}_{run}.json (model tag sanitized for Windows file names).
+Existing raw files are reused unless --force is given, so interrupted runs resume.
 """
 
 import argparse
+import importlib
 import json
 import re
 import sys
@@ -15,11 +18,9 @@ import pandas as pd
 from ollama import Client, ResponseError
 from pydantic import ValidationError
 
-from schema import FINDING_NAMES, FollowUp, LargestNodule, ReportExtraction, build_messages
-
+SCHEMAS = {"chest_ct": "schema", "binary": "schema_binary"}
 OPTIONS = {"temperature": 0, "seed": 42, "num_ctx": 8192}
 MAX_RETRIES = 3
-RAW_DIR = Path("raw")
 
 # Model families run WITHOUT constrained format (the JSON schema goes into the prompt instead).
 # gpt-oss is prompt-only because format= was silently not enforced at think="medium" (see README).
@@ -40,19 +41,19 @@ def thinking_for(model: str):
     return None
 
 
+def is_cloud_model(model: str) -> bool:
+    return model.endswith("-cloud") or model.endswith(":cloud")
+
+
 def uses_constrained_format(model: str) -> bool:
     if is_cloud_model(model):
         return False
     return not model.lower().startswith(PROMPT_ONLY_JSON_MODEL_PREFIXES)
 
 
-def is_cloud_model(model: str) -> bool:
-    return model.endswith("-cloud") or model.endswith(":cloud")
-
-
-def raw_file(model: str, report_id: str, run: int) -> Path:
+def raw_file(raw_dir: Path, model: str, report_id: str, run: int) -> Path:
     safe_model = re.sub(r"[^A-Za-z0-9.-]+", "_", model)
-    return RAW_DIR / f"{safe_model}_{report_id}_{run}.json"
+    return raw_dir / f"{safe_model}_{report_id}_{run}.json"
 
 
 def strip_code_fences(text: str) -> str:
@@ -68,12 +69,12 @@ def compact_validation_error(error: ValidationError) -> str:
     return "\n".join(lines)
 
 
-def call_model(client: Client, model: str, report_text: str) -> dict:
+def call_model(client: Client, model: str, report_text: str, schema) -> dict:
     """Call the model, validate, retry on validation errors, and return everything worth saving."""
     think = thinking_for(model)
     constrained = uses_constrained_format(model)
-    response_format = ReportExtraction.model_json_schema() if constrained else None
-    messages = build_messages(report_text, include_schema=not constrained)
+    response_format = schema.ReportExtraction.model_json_schema() if constrained else None
+    messages = schema.build_messages(report_text, include_schema=not constrained)
     attempts = []
     extraction = None
     started = time.perf_counter()
@@ -92,7 +93,7 @@ def call_model(client: Client, model: str, report_text: str) -> dict:
             "validation_error": None,
         }
         try:
-            extraction = ReportExtraction.model_validate_json(strip_code_fences(content))
+            extraction = schema.ReportExtraction.model_validate_json(strip_code_fences(content))
             attempts.append(record)
             break
         except ValidationError as error:
@@ -104,6 +105,7 @@ def call_model(client: Client, model: str, report_text: str) -> dict:
                  + "\nReturn the complete corrected JSON object only."},
             ]
     return {
+        "schema": schema.__name__,
         "model": model,
         "think": think,
         "constrained_format": constrained,
@@ -154,19 +156,16 @@ def check_evidence(evidence, report_text: str, normalized_report: str, offsets: 
     return 1, section_at(offsets[position], report_text)
 
 
-def result_columns() -> list[str]:
+def result_columns(schema) -> list[str]:
     columns = ["report_id", "model", "run", "valid_json", "attempts", "latency_s"]
-    for name in FINDING_NAMES:
-        columns += [f"{name}_status", f"{name}_evidence", f"{name}_evidence_ok", f"{name}_section"]
-    columns.append("nodule_count")
-    columns += [f"largest_nodule_{field}" for field in LargestNodule.model_fields]
-    columns += ["largest_nodule_evidence_ok", "largest_nodule_section"]
-    columns += [f"follow_up_{field}" for field in FollowUp.model_fields]
-    columns += ["follow_up_evidence_ok", "follow_up_section"]
+    for column in schema.FLAT_COLUMNS:
+        columns.append(column)
+        if column.endswith("_evidence"):
+            columns += [column + "_ok", column.removesuffix("_evidence") + "_section"]
     return columns
 
 
-def build_row(report_id: str, model: str, run: int, report_text: str, raw: dict) -> dict:
+def build_row(report_id: str, model: str, run: int, report_text: str, raw: dict, schema) -> dict:
     row = {
         "report_id": report_id,
         "model": model,
@@ -177,22 +176,14 @@ def build_row(report_id: str, model: str, run: int, report_text: str, raw: dict)
     }
     if not raw["valid_json"]:
         return row
-    extraction = ReportExtraction.model_validate(raw["extraction"])
+    extraction = schema.ReportExtraction.model_validate(raw["extraction"])
     normalized_report, offsets = normalize_with_offsets(report_text)
-    for name in FINDING_NAMES:
-        observation = getattr(extraction, name)
-        evidence_ok, section = check_evidence(observation.evidence, report_text, normalized_report, offsets)
-        row[f"{name}_status"] = observation.status
-        row[f"{name}_evidence"] = observation.evidence
-        row[f"{name}_evidence_ok"] = evidence_ok
-        row[f"{name}_section"] = section
-    row["nodule_count"] = extraction.nodule_count
-    for prefix, part in (("largest_nodule", extraction.largest_nodule), ("follow_up", extraction.follow_up)):
-        for field, value in part.model_dump().items():
-            row[f"{prefix}_{field}"] = value
-        evidence_ok, section = check_evidence(part.evidence, report_text, normalized_report, offsets)
-        row[f"{prefix}_evidence_ok"] = evidence_ok
-        row[f"{prefix}_section"] = section
+    for column, value in schema.flatten(extraction).items():
+        row[column] = value
+        if column.endswith("_evidence"):
+            evidence_ok, section = check_evidence(value, report_text, normalized_report, offsets)
+            row[column + "_ok"] = evidence_ok
+            row[column.removesuffix("_evidence") + "_section"] = section
     return row
 
 
@@ -200,7 +191,9 @@ def main():
     parser = argparse.ArgumentParser(description="Benchmark Ollama models on structured extraction from chest CT reports.")
     parser.add_argument("--input", type=Path, default=Path("reports.csv"), help="CSV with report_id, report_text")
     parser.add_argument("--output", type=Path, default=Path("results.csv"))
-    parser.add_argument("--models", nargs="+", required=True, help="Ollama model tags, e.g. gpt-oss:20b gemma4:12b")
+    parser.add_argument("--models", nargs="+", required=True, help="Ollama model tags, e.g. gpt-oss:20b gemma4:26b")
+    parser.add_argument("--schema", choices=SCHEMAS, default="chest_ct")
+    parser.add_argument("--ids", type=Path, default=None, help="CSV with a report_id column: run only those reports")
     parser.add_argument("--runs", type=int, default=1, help="repeat each report N times to measure determinism")
     parser.add_argument("--host", default="http://localhost:11434")
     parser.add_argument("--limit", type=int, default=None, help="only the first N reports")
@@ -215,7 +208,13 @@ def main():
             "Real reports must never reach a cloud model. For synthetic test data only, re-run with --allow-cloud."
         )
 
+    schema = importlib.import_module(SCHEMAS[args.schema])
     reports = pd.read_csv(args.input, dtype=str, keep_default_na=False)
+    if args.ids is not None:
+        wanted = pd.read_csv(args.ids, dtype=str, keep_default_na=False)["report_id"]
+        reports = reports[reports["report_id"].isin(wanted)]
+        if reports.empty:
+            sys.exit(f"ERROR: none of the report_ids in {args.ids} are in {args.input}")
     if args.limit is not None:
         reports = reports.head(args.limit)
 
@@ -228,27 +227,29 @@ def main():
         except Exception as error:
             sys.exit(f"ERROR: cannot reach Ollama at {args.host}: {error}")
 
-    RAW_DIR.mkdir(exist_ok=True)
+    raw_dir = Path("raw") / args.schema
+    raw_dir.mkdir(parents=True, exist_ok=True)
     rows = []
     for model in args.models:
-        print(f"== {model}: think={thinking_for(model)!r}, constrained_format={uses_constrained_format(model)}")
+        print(f"== {model}: schema={args.schema}, think={thinking_for(model)!r}, constrained_format={uses_constrained_format(model)}", flush=True)
         for report_number, report in enumerate(reports.itertuples(index=False), start=1):
             for run in range(1, args.runs + 1):
-                path = raw_file(model, report.report_id, run)
+                path = raw_file(raw_dir, model, report.report_id, run)
                 if path.exists() and not args.force:
                     raw = json.loads(path.read_text(encoding="utf-8"))
                     note = "resumed from raw file"
                 else:
-                    raw = call_model(client, model, report.report_text)
+                    raw = call_model(client, model, report.report_text, schema)
                     path.write_text(json.dumps(raw, indent=1), encoding="utf-8")
                     note = ""
-                row = build_row(report.report_id, model, run, report.report_text, raw)
+                row = build_row(report.report_id, model, run, report.report_text, raw, schema)
                 rows.append(row)
                 print(
                     f"[{model}] {report_number}/{len(reports)} {report.report_id} run {run}: "
-                    f"valid_json={row['valid_json']} attempts={row['attempts']} latency={row['latency_s']:.1f}s {note}"
+                    f"valid_json={row['valid_json']} attempts={row['attempts']} latency={row['latency_s']:.1f}s {note}",
+                    flush=True,
                 )
-                pd.DataFrame(rows, columns=result_columns()).to_csv(args.output, index=False, encoding="utf-8")
+                pd.DataFrame(rows, columns=result_columns(schema)).to_csv(args.output, index=False, encoding="utf-8")
     print(f"Wrote {len(rows)} rows to {args.output}")
 
 
