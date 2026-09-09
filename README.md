@@ -20,6 +20,23 @@ report text rather than trusting the model.
 
 `.venv/`, `raw/`, `results*.csv`, `summary*.csv` and `disputed*.csv` are gitignored.
 
+## Laptop run checklist (binary schema, two local models)
+
+```powershell
+git clone https://github.com/negretemdev/radextract.git   # or: git pull, if already cloned
+cd radextract
+ollama pull gemma4:26b
+ollama pull gpt-oss:20b
+uv run extract.py --schema binary --models gemma4:26b gpt-oss:20b --output results_binary.csv
+uv run evaluate.py --schema binary --results results_binary.csv --output summary_binary.csv
+uv run compare.py --schema binary --results results_binary.csv --models gemma4:26b gpt-oss:20b --ground-truth ground_truth_binary.csv --output disputed_binary.csv
+```
+
+- After the first call, run `ollama ps` in a second terminal: each model must show `100% GPU`. If it shows a CPU share and reports take minutes, stop and switch to `gemma4:12b`.
+- The run resumes if interrupted: re-run the same `extract.py` command and finished reports are skipped.
+- Local gemma is the first model to use constrained `format=` (the cloud ignored it). If gemma calls fail with a grammar or format error, add `"gemma"` to `PROMPT_ONLY_JSON_MODEL_PREFIXES` in `extract.py` and re-run; that sends the schema in the prompt instead.
+- The file to look at afterwards is `results_binary.csv` (100 rows: 50 reports x 2 models, every value and quote). `summary_binary.csv` and `disputed_binary.csv` are derived from it and the ground truth in the repo.
+
 ## Windows setup (RTX 4090 Laptop GPU, 16 GB VRAM, 96 GB RAM)
 
 1. Install uv in PowerShell, then open a new terminal:
