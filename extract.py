@@ -22,7 +22,8 @@ MAX_RETRIES = 3
 RAW_DIR = Path("raw")
 
 # Model families run WITHOUT constrained format (the JSON schema goes into the prompt instead).
-# On gpt-oss the schema passed as format= was silently not enforced (see README), so it is prompt-only.
+# gpt-oss is prompt-only because format= was silently not enforced at think="medium" (see README).
+# Cloud models are always prompt-only: Ollama cloud ignored format= on both gpt-oss and gemma 4.
 PROMPT_ONLY_JSON_MODEL_PREFIXES = ("gpt-oss",)
 
 SECTION_HEADER = re.compile(r"^[ \t]*(FINDINGS|IMPRESSION)[ \t]*(:|$)", re.MULTILINE | re.IGNORECASE)
@@ -40,6 +41,8 @@ def thinking_for(model: str):
 
 
 def uses_constrained_format(model: str) -> bool:
+    if is_cloud_model(model):
+        return False
     return not model.lower().startswith(PROMPT_ONLY_JSON_MODEL_PREFIXES)
 
 

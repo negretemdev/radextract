@@ -27,13 +27,14 @@ report text rather than trusting the model.
 2. Install Ollama for Windows from https://ollama.com/download and pull the two tags you want to benchmark, for example:
    ```
    ollama pull gpt-oss:20b
-   ollama pull gemma4:<variant that fits in 16 GB>
+   ollama pull gemma4:26b
    ```
+   `gemma4:26b` is a mixture-of-experts model (about 4B active parameters per token), so it runs on the 16 GB card even though its weights are 19 GB. `gemma4:12b` (7.6 GB, dense) is the fallback if `ollama ps` shows it spilling.
 3. Clone and run. The first `uv run` downloads Python 3.12 (from `.python-version`) and builds `.venv` from `uv.lock`; there is no separate install step:
    ```
    git clone https://github.com/negretemdev/radextract.git
    cd radextract
-   uv run extract.py --input reports.csv --output results.csv --models gpt-oss:20b gemma4:<variant>
+   uv run extract.py --input reports.csv --output results.csv --models gpt-oss:20b gemma4:26b
    uv run evaluate.py --results results.csv --ground-truth ground_truth.csv --output summary.csv
    ```
    Add `--runs 3` to measure determinism. Model tags are always runtime arguments; nothing is hardcoded.
@@ -57,7 +58,7 @@ Resume: a call is skipped when `raw/{model}_{report_id}_{run}.json` already exis
 
 - `num_ctx` is fixed at 8192 in `OPTIONS` in `extract.py`. Do not raise it: the KV cache is what pushes a model off the GPU. Reports are about 400 tokens, the output about 1,500 tokens, and gpt-oss thinking adds 1,000 to 3,000, so 8192 is enough.
 - After the first call, run `ollama ps` in another terminal. The model must show `100% GPU`. Any CPU share means it spilled and will run many times slower.
-- A gemma 4 26B variant previously spilled to CPU on this machine. Start with a variant that fits in 16 GB together with the 8k context.
+- `gemma4:26b` once showed a CPU share in `ollama ps` on this machine. It is a MoE with only a few billion active parameters, so a partial CPU share can still be fast; if a report takes minutes, switch to `gemma4:12b`.
 - gpt-oss is hardcoded to `think="medium"`. Never run it at high on this machine: it overflows memory and never finishes. There is deliberately no CLI flag for thinking.
 - Models run one after the other (all reports for model 1, then model 2), so Ollama loads each model once. An idle model unloads after 5 minutes (Ollama's default keep_alive).
 
@@ -73,7 +74,7 @@ Resume: a call is skipped when `raw/{model}_{report_id}_{run}.json` already exis
 - tags matching `gemma4` / `gemma-4` → `think=False`
 - anything else → `think=None` (Ollama's default for that model)
 
-Verified here with ollama 0.6.2 (Python package) against Ollama 0.31.1: `Client.chat()` takes `think: bool | Literal["low", "medium", "high"] | None` and passes it straight through the API. A probe call to `gpt-oss:120b-cloud` with `think="medium"` returned `message.thinking` with 3,000 to 5,000 characters of reasoning and `message.content` with the JSON, so the setting is honoured and the thinking never contaminates the content. The gemma 4 `think=False` path could not be exercised on the Mac (no local model); it is the same parameter with a bool.
+Verified here with ollama 0.6.2 (Python package) against Ollama 0.31.1: `Client.chat()` takes `think: bool | Literal["low", "medium", "high"] | None` and passes it straight through the API. A probe call to `gpt-oss:120b-cloud` with `think="medium"` returned `message.thinking` with 3,000 to 5,000 characters of reasoning and `message.content` with the JSON, so the setting is honoured and the thinking never contaminates the content. `gemma4:31b-cloud` accepted `think=False` and returned no thinking text, so the bool path works too.
 
 ## Output columns
 
@@ -99,7 +100,7 @@ The prompt in `schema.py` states these rules; the ground truth was filled by han
 
 ## Things I had to work around
 
-1. **gpt-oss ignores `format=` schemas.** On `gpt-oss:120b-cloud` with `think="medium"`, passing `ReportExtraction.model_json_schema()` as `format` was silently not enforced: the model invented its own keys and 17 required fields were missing. The same call with no `format` and the JSON schema pasted into the system prompt returned a fully valid extraction on the first attempt. `PROMPT_ONLY_JSON_MODEL_PREFIXES = ("gpt-oss",)` in `extract.py` therefore routes gpt-oss through prompt-only JSON (code fences are stripped if present); gemma and everything else get constrained `format` with the short prompt. To try constrained mode on the local 20b, set that tuple to `()` and compare `valid_json_rate`; the local llama.cpp engine may behave differently from the cloud backend.
+1. **Ollama cloud ignores `format=` schemas.** On `gpt-oss:120b-cloud` with `think="medium"`, passing `ReportExtraction.model_json_schema()` as `format` was silently not enforced: the model invented its own keys and 17 required fields were missing. `gemma4:31b-cloud` did the same (12 required fields missing, fenced JSON), so this is a cloud limitation, not a gpt-oss one. The same calls with no `format` and the JSON schema pasted into the system prompt returned valid extractions. `uses_constrained_format()` in `extract.py` therefore sends every cloud tag through prompt-only JSON (code fences are stripped), and `PROMPT_ONLY_JSON_MODEL_PREFIXES = ("gpt-oss",)` keeps local gpt-oss prompt-only as well, since that path is proven at `think="medium"`. Local gemma gets constrained `format` with the short prompt. To try constrained mode on the local gpt-oss:20b, set that tuple to `()` and compare `valid_json_rate`.
 2. **Windows file names.** Model tags contain `:` (illegal in Windows file names), so the raw file name sanitizes the tag: `gpt-oss:20b` → `raw/gpt-oss_20b_R001_1.json`.
 3. **Quotes are the weak spot, not statuses.** Even with correct statuses the model rewrites shared negations ("No emphysema or bronchiectasis." quoted as "No bronchiectasis") or splices with "..." ("The visualized liver ... are unremarkable."). The prompt now demands one contiguous span; the `evidence_ok` check catches the rest.
 4. **The cloud model is not deterministic even at temperature 0, seed 42.** Three calls on the same report gave identical statuses and values but different quotes each time (0 to 3 `evidence_ok` failures). That is why `summary.csv` reports `identical_runs_rate` and `identical_runs_rate_with_evidence` separately. Local llama.cpp inference should be more deterministic; `--runs 3` will show.
@@ -162,3 +163,23 @@ Wrote summary.csv
 ```
 
 The two `evidence_ok` failures were both shared statements split by the model ("No pleural effusion or pneumothorax." quoted as "No pneumothorax", "Unremarkable visualized liver and adrenal glands." quoted as "Unremarkable visualized liver."); every status was still correct.
+
+## Full 30-report run on Ollama cloud (reference baseline)
+
+Run on the Mac with `--allow-cloud` on the synthetic reports, one run per model. Ollama cloud ignores `format=`, so all three used prompt-only JSON. `gemma4:26b` has no cloud tag; `gemma4:31b-cloud` stands in for it here.
+
+| Metric | gpt-oss:120b-cloud | gpt-oss:20b-cloud | gemma4:31b-cloud |
+|---|---|---|---|
+| Valid JSON | 30/30 | 30/30 (one report needed a retry) | 30/30 |
+| Accuracy vs ground truth (900 values) | 98.9% | 96.7% | 99.6% |
+| Quotes verbatim (`evidence_ok`) | 96.3% | 96.8% | 99.6% |
+| Mean latency (cloud, throttled) | 4 s | 53 s | 33 s |
+
+What the errors were:
+
+- All three models write `attenuation: solid` for a nodule the report calls only "calcified" or a "mass" (ground truth `not_stated`, never infer). Clinically defensible; it is the strictest rule in the schema and worth reconsidering.
+- Both gpt-oss models take "The lungs are clear." as `not_mentioned` for the individual lung findings instead of `absent` (whole-structure rule). Gemma applied the rule.
+- gpt-oss:20b alone made real reading errors: it called a **resolved** consolidation `present` (R024, the comparison-language trap), missed explicit negations of cardiomegaly, aortic dilation and pulmonary embolism, over-negated findings the report never mentioned (R003 osseous lesion, R025 embolism), inferred `calcified: no` five times, and answered `follow_up: no` for normal reports that say nothing about follow-up.
+- Gemma's one status error is arguable: "The pulmonary arteries are normal in caliber." read as `absent` for pulmonary embolism (ground truth `not_mentioned`).
+
+Per-field agreement between the three models (run 1) is in the `agreement_between_models` column of `summary.csv`; the least agreed fields were `largest_nodule_calcified` (83%), `adrenal_nodule_status` (87%) and `pulmonary_embolism_status`, `hepatic_lesion_status`, `follow_up_recommended` (90%).
