@@ -11,6 +11,7 @@ report text rather than trusting the model.
 |---|---|
 | `schema.py` | Schema `chest_ct`: Pydantic models (`Observation` with a 3-state status, `LargestNodule`, `FollowUp`, `ReportExtraction`) and the extraction prompt. Adding a finding is one line in `ReportExtraction`; the scripts discover the fields at runtime. |
 | `schema_binary.py` | Schema `binary`: the same 20 findings plus `follow_up_recommended`, each a `BinaryObservation` (`present: bool` + quote). false covers both negated and not mentioned. |
+| `benchmark.py` | One command: `extract.py`, then `evaluate.py`, then `compare.py`; writes `results_<schema>.csv`, `summary_<schema>.csv`, `disputed_<schema>.csv`. |
 | `extract.py` | Runs models over `reports.csv`, writes `results.csv` (one row per report, model and run) and one raw JSON per call in `raw/{schema}/`. `--schema chest_ct` (default) or `--schema binary`. |
 | `evaluate.py` | Scores `results.csv` against the schema's ground truth, writes `summary.csv`. |
 | `compare.py` | Field-by-field disagreement between two models, writes `disputed.csv`; quotes are ignored on purpose. |
@@ -27,10 +28,10 @@ git clone https://github.com/negretemdev/radextract.git   # or: git pull, if alr
 cd radextract
 ollama pull gemma4:26b
 ollama pull gpt-oss:20b
-uv run extract.py --schema binary --models gemma4:26b gpt-oss:20b --output results_binary.csv
-uv run evaluate.py --schema binary --results results_binary.csv --output summary_binary.csv
-uv run compare.py --schema binary --results results_binary.csv --models gemma4:26b gpt-oss:20b --ground-truth ground_truth_binary.csv --output disputed_binary.csv
+uv run benchmark.py --schema binary --models gemma4:26b gpt-oss:20b
 ```
+
+`benchmark.py` runs `extract.py`, then `evaluate.py`, then `compare.py` (first two models) and writes `results_binary.csv`, `summary_binary.csv` and `disputed_binary.csv`. It takes the same options as `extract.py` (`--runs`, `--limit`, `--ids`, `--force`, `--allow-cloud`, `--host`). The three scripts can still be run separately.
 
 - After the first call, run `ollama ps` in a second terminal: each model must show `100% GPU`. If it shows a CPU share and reports take minutes, stop and switch to `gemma4:12b`.
 - The run resumes if interrupted: re-run the same `extract.py` command and finished reports are skipped.
