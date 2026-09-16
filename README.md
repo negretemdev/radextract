@@ -13,6 +13,7 @@ report text rather than trusting the model.
 | `schema_binary.py` | Schema `binary`: the same 20 findings plus `follow_up_recommended`, each a `BinaryObservation` (`present: bool` + quote). false covers both negated and not mentioned. |
 | `benchmark.py` | One command: `extract.py`, then `evaluate.py`, then `compare.py`; writes `results_<schema>.csv`, `summary_<schema>.csv`, `disputed_<schema>.csv`. |
 | `extract.py` | Runs models over `reports.csv`, writes `results.csv` (one row per report, model and run) and one raw JSON per call in `raw/{schema}/`. `--schema chest_ct` (default) or `--schema binary`. |
+| `inspect_raw.py` | Explains retries and failures from `raw/`: done_reason, thinking length, validation error per attempt. |
 | `evaluate.py` | Scores `results.csv` against the schema's ground truth, writes `summary.csv`. |
 | `compare.py` | Field-by-field disagreement between two models, writes `disputed.csv`; quotes are ignored on purpose. |
 | `reports.csv` | 30 synthetic chest CT reports (`report_id`, `report_text`). Fictional, no patient identifiers. |
@@ -37,7 +38,13 @@ To benchmark gemma with thinking on as well (gpt-oss and the earlier gemma run a
 uv run benchmark.py --schema binary --models gemma4:26b@think gemma4:26b gpt-oss:20b
 ```
 
-Watch `ollama ps` again: thinking adds output tokens, not weights, so the model should still fit; if a report takes minutes or `raw/binary/gemma4_26b_think_*.json` shows `done_reason: length`, the 8k context is being exhausted by the reasoning.
+Watch `ollama ps` again: thinking adds output tokens, not weights, so the model should still fit. If reports take minutes or show `attempts` above 1, ask the raw files why:
+
+```powershell
+uv run inspect_raw.py --model gemma4:26b@think
+```
+
+It prints, per retried or failed call, each attempt's `done_reason`, thinking length and validation error. `done_reason=length` means thinking plus JSON did not fit in the 8k context (such calls are not retried, a retry would be cut off again); a validation error with `done_reason=stop` means the model broke a schema rule and the retry is doing its job. `--delete-failed` removes failed raw files so a later run redoes only those.
 
 `benchmark.py` runs `extract.py`, then `evaluate.py`, then `compare.py` (first two models) and writes `results_binary.csv`, `summary_binary.csv` and `disputed_binary.csv`. It takes the same options as `extract.py` (`--runs`, `--limit`, `--ids`, `--force`, `--allow-cloud`, `--host`). The three scripts can still be run separately.
 

@@ -108,6 +108,11 @@ def call_model(client: Client, model: str, report_text: str, schema) -> dict:
             "done_reason": response.done_reason,
             "validation_error": None,
         }
+        if response.done_reason == "length":
+            record["validation_error"] = ("response cut off by num_ctx (done_reason=length): thinking plus JSON did not fit in "
+                                          f"{OPTIONS['num_ctx']} tokens; not retried because the same prompt would be cut off again")
+            attempts.append(record)
+            break
         try:
             extraction = schema.ReportExtraction.model_validate_json(strip_code_fences(content))
             attempts.append(record)
