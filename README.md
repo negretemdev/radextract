@@ -251,3 +251,25 @@ Ground-truth conventions for the hard set, applied on top of the prompt rules (t
 | Quotes verbatim | 98.9% | 99.7% | 99.0% |
 
 gemma4:31b vs gpt-oss:20b on the hard 20: **6 disputed fields in 5 of 20 reports** (1.4% of fields; 4 reports with one field, 1 with two). Where the two agreed, 412 of 414 values were correct; the two agreed-wrong values are both "attention on follow-up imaging" read as a recommendation, which all three models did, so that ground-truth convention is the outlier rather than the models. On the disputes gemma was right 5 times and gpt-oss:20b once. gpt-oss:20b's misses were the classic traps: it let the impression's "No acute pulmonary embolism" override the chronic thromboembolic disease described in the findings, let "no pleural effusion" in the impression override the effusion in the findings, counted "prominent but not pathologically enlarged" nodes as lymphadenopathy, and counted a healing rib fracture as an osseous lesion. Majority vote with the 120B as tiebreaker scores 99.3%, the same as gemma alone. Over all 50 reports the two primaries disagree on 6 of 1,050 fields (0.6%).
+
+## Laptop run: gemma4:26b vs gpt-oss:20b (the real benchmark)
+
+Run on the RTX 4090 laptop on 2026-09-16 with `uv run benchmark.py --schema binary --models gemma4:26b gpt-oss:20b`, 50 reports, one run each. gemma used constrained `format=`, gpt-oss prompt-only JSON.
+
+| Metric | gemma4:26b | gpt-oss:20b |
+|---|---|---|
+| Valid JSON, first attempt | 50/50 | 49/50 (one retry) |
+| Accuracy, all 50 (1,050 values) | 99.0% (11 wrong) | 99.2% (8 wrong) |
+| Accuracy, clean 30 | 99.8% | 100% |
+| Accuracy, hard 20 | 97.6% | 98.1% |
+| Quotes verbatim | 97.0% | 97.5% |
+| Median latency per report | 5.2 s | 14.2 s |
+| 1,000 reports | 1.4 h | 4.0 h |
+
+Disagreement between the two: 9 fields in 8 of 50 reports (0.9%; seven reports with one field, one with two). Where they agreed, 1,036 of 1,041 values were correct (99.5%). On the disputes gpt-oss was right 6 times, gemma 3. Disagreement exposed 6 of gemma's 11 errors and 3 of gpt-oss's 8; the other 5 are errors both models share and no ensemble can see.
+
+The shared errors: both called chronic thromboembolic disease `false` for pulmonary embolism because the impression said "No acute pulmonary embolism" (R033); both read "attention on follow-up imaging" as a recommendation (R035, R042, a ground-truth convention every model tested rejects, so it is probably wrong); both counted "small mediastinal lymph nodes, nonspecific" as lymphadenopathy (R044) and a healing rib fracture as an osseous lesion (R050).
+
+gemma's own misses were mostly over-calling: calcified nonenlarged hilar nodes as lymphadenopathy, a hilar node filed under mediastinal, "heart size upper normal" as cardiomegaly, adrenal thickening without a nodule as a nodule, and "no dedicated follow-up recommended" for a thyroid nodule overriding "continue annual screening". gpt-oss's were the impression overriding the findings (no effusion, R034), "prominent but not pathologically enlarged" nodes as lymphadenopathy (R038), and one finding lifted from the INDICATION line ("Known hepatic hemangioma", R035), which the `section` column flagged as `other`.
+
+Unlike the cloud comparison, where the 31B gemma was strong enough that gpt-oss added nothing, on the laptop the 26B gemma and gpt-oss:20b are tied on accuracy and their disagreements are informative. The pair costs about 3.7x the time of gemma alone.
