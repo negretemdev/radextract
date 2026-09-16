@@ -31,6 +31,14 @@ ollama pull gpt-oss:20b
 uv run benchmark.py --schema binary --models gemma4:26b gpt-oss:20b
 ```
 
+To benchmark gemma with thinking on as well (gpt-oss and the earlier gemma run are reused from `raw/`, only the new variant is called):
+
+```powershell
+uv run benchmark.py --schema binary --models gemma4:26b@think gemma4:26b gpt-oss:20b
+```
+
+Watch `ollama ps` again: thinking adds output tokens, not weights, so the model should still fit; if a report takes minutes or `raw/binary/gemma4_26b_think_*.json` shows `done_reason: length`, the 8k context is being exhausted by the reasoning.
+
 `benchmark.py` runs `extract.py`, then `evaluate.py`, then `compare.py` (first two models) and writes `results_binary.csv`, `summary_binary.csv` and `disputed_binary.csv`. It takes the same options as `extract.py` (`--runs`, `--limit`, `--ids`, `--force`, `--allow-cloud`, `--host`). The three scripts can still be run separately.
 
 - After the first call, run `ollama ps` in a second terminal: each model must show `100% GPU`. If it shows a CPU share and reports take minutes, stop and switch to `gemma4:12b`.
@@ -98,8 +106,10 @@ Resume: a call is skipped when `raw/{schema}/{model}_{report_id}_{run}.json` alr
 `thinking_for()` in `extract.py`:
 
 - tags starting with `gpt-oss` → `think="medium"`
-- tags matching `gemma4` / `gemma-4` → `think=False`
-- anything else → `think=None` (Ollama's default for that model)
+- tags matching `gemma4` / `gemma-4` → `think=False`; with the `@think` suffix (`gemma4:26b@think`) → `think=True`
+- anything else → `think=None` (Ollama's default for that model); `@think` → `think=True`
+
+The `@think` suffix is the only way to change thinking and it is part of the model label: `gemma4:26b` and `gemma4:26b@think` are treated as two different models in `results.csv`, `raw/` and `compare.py`, so both can be benchmarked in one run. The suffix is stripped before the tag is sent to Ollama. `gpt-oss:20b@think` is refused: gpt-oss stays at medium, full stop.
 
 Verified here with ollama 0.6.2 (Python package) against Ollama 0.31.1: `Client.chat()` takes `think: bool | Literal["low", "medium", "high"] | None` and passes it straight through the API. A probe call to `gpt-oss:120b-cloud` with `think="medium"` returned `message.thinking` with 3,000 to 5,000 characters of reasoning and `message.content` with the JSON, so the setting is honoured and the thinking never contaminates the content. `gemma4:31b-cloud` accepted `think=False` and returned no thinking text, so the bool path works too.
 

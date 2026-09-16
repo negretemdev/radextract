@@ -31,24 +31,39 @@ SECTION_HEADER = re.compile(r"^[ \t]*(FINDINGS|IMPRESSION)[ \t]*(:|$)", re.MULTI
 CODE_FENCE = re.compile(r"```(?:json)?\s*(\{.*\})\s*```", re.DOTALL)
 
 
+THINK_SUFFIX = "@think"
+
+
+def split_model_tag(model: str):
+    """'gemma4:26b@think' -> ('gemma4:26b', True). The label with the suffix is kept in results and raw file names."""
+    if model.endswith(THINK_SUFFIX):
+        return model[: -len(THINK_SUFFIX)], True
+    return model, False
+
+
 def thinking_for(model: str):
-    """Thinking is fixed per model family and deliberately not configurable from the CLI."""
-    name = model.lower()
+    """Thinking is fixed per model family; there is no CLI flag. gpt-oss is always "medium" and cannot be
+    overridden (high overflows memory on the 16 GB target machine and never finishes). gemma 4 runs with
+    thinking off unless the tag carries the @think suffix, which is an explicit per-model opt-in."""
+    tag, think_requested = split_model_tag(model)
+    name = tag.lower()
     if name.startswith("gpt-oss"):
-        return "medium"  # never "high": it overflows memory on the 16 GB target machine and never finishes
+        return "medium"
     if re.search(r"gemma[-_]?4", name):
-        return False
-    return None
+        return think_requested
+    return True if think_requested else None
 
 
 def is_cloud_model(model: str) -> bool:
-    return model.endswith("-cloud") or model.endswith(":cloud")
+    tag, _ = split_model_tag(model)
+    return tag.endswith("-cloud") or tag.endswith(":cloud")
 
 
 def uses_constrained_format(model: str) -> bool:
     if is_cloud_model(model):
         return False
-    return not model.lower().startswith(PROMPT_ONLY_JSON_MODEL_PREFIXES)
+    tag, _ = split_model_tag(model)
+    return not tag.lower().startswith(PROMPT_ONLY_JSON_MODEL_PREFIXES)
 
 
 def raw_file(raw_dir: Path, model: str, report_id: str, run: int) -> Path:
@@ -71,6 +86,7 @@ def compact_validation_error(error: ValidationError) -> str:
 
 def call_model(client: Client, model: str, report_text: str, schema) -> dict:
     """Call the model, validate, retry on validation errors, and return everything worth saving."""
+    tag, _ = split_model_tag(model)
     think = thinking_for(model)
     constrained = uses_constrained_format(model)
     response_format = schema.ReportExtraction.model_json_schema() if constrained else None
@@ -80,7 +96,7 @@ def call_model(client: Client, model: str, report_text: str, schema) -> dict:
     started = time.perf_counter()
     for attempt in range(1, MAX_RETRIES + 2):
         attempt_started = time.perf_counter()
-        response = client.chat(model=model, messages=messages, format=response_format, think=think, options=OPTIONS)
+        response = client.chat(model=tag, messages=messages, format=response_format, think=think, options=OPTIONS)
         content = response.message.content or ""
         record = {
             "attempt": attempt,
@@ -220,10 +236,13 @@ def main():
 
     client = Client(host=args.host)
     for model in args.models:
+        tag, think_requested = split_model_tag(model)
+        if think_requested and tag.lower().startswith("gpt-oss"):
+            sys.exit(f"ERROR: {model!r}: gpt-oss thinking is fixed at medium on this machine and cannot be changed.")
         try:
-            client.show(model)
+            client.show(tag)
         except ResponseError as error:
-            sys.exit(f"ERROR: model {model!r} is not available at {args.host} ({error.error}). Run: ollama pull {model}")
+            sys.exit(f"ERROR: model {tag!r} is not available at {args.host} ({error.error}). Run: ollama pull {tag}")
         except Exception as error:
             sys.exit(f"ERROR: cannot reach Ollama at {args.host}: {error}")
 
