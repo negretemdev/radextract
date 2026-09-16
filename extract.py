@@ -20,6 +20,7 @@ from pydantic import ValidationError
 
 SCHEMAS = {"chest_ct": "schema", "binary": "schema_binary"}
 OPTIONS = {"temperature": 0, "seed": 42, "num_ctx": 8192}
+THINKING_NUM_CTX = 32768  # @think variants only: gemma4:26b reasons for ~7.5k tokens per report. gpt-oss stays at 8192.
 MAX_RETRIES = 3
 
 # Model families run WITHOUT constrained format (the JSON schema goes into the prompt instead).
@@ -52,6 +53,15 @@ def thinking_for(model: str):
     if re.search(r"gemma[-_]?4", name):
         return think_requested
     return True if think_requested else None
+
+
+def options_for(model: str) -> dict:
+    """Sampling options per model. Only the context size varies: thinking variants get THINKING_NUM_CTX."""
+    options = dict(OPTIONS)
+    _, think_requested = split_model_tag(model)
+    if think_requested:
+        options["num_ctx"] = THINKING_NUM_CTX
+    return options
 
 
 def is_cloud_model(model: str) -> bool:
@@ -88,6 +98,7 @@ def call_model(client: Client, model: str, report_text: str, schema) -> dict:
     """Call the model, validate, retry on validation errors, and return everything worth saving."""
     tag, _ = split_model_tag(model)
     think = thinking_for(model)
+    options = options_for(model)
     constrained = uses_constrained_format(model)
     response_format = schema.ReportExtraction.model_json_schema() if constrained else None
     messages = schema.build_messages(report_text, include_schema=not constrained)
@@ -96,7 +107,7 @@ def call_model(client: Client, model: str, report_text: str, schema) -> dict:
     started = time.perf_counter()
     for attempt in range(1, MAX_RETRIES + 2):
         attempt_started = time.perf_counter()
-        response = client.chat(model=tag, messages=messages, format=response_format, think=think, options=OPTIONS)
+        response = client.chat(model=tag, messages=messages, format=response_format, think=think, options=options)
         content = response.message.content or ""
         record = {
             "attempt": attempt,
@@ -109,7 +120,7 @@ def call_model(client: Client, model: str, report_text: str, schema) -> dict:
             "validation_error": None,
         }
         if response.done_reason == "length":
-            record["validation_error"] = (f"response cut off by num_ctx={OPTIONS['num_ctx']} (done_reason=length) after "
+            record["validation_error"] = (f"response cut off by num_ctx={options['num_ctx']} (done_reason=length) after "
                                           f"{len(response.message.thinking or '')} characters of thinking; JSON incomplete or missing")
             attempts.append(record)
             messages = messages + [
@@ -135,7 +146,7 @@ def call_model(client: Client, model: str, report_text: str, schema) -> dict:
         "model": model,
         "think": think,
         "constrained_format": constrained,
-        "options": OPTIONS,
+        "options": options,
         "valid_json": extraction is not None,
         "attempts": attempts,
         "latency_s": time.perf_counter() - started,
@@ -260,7 +271,8 @@ def main():
     raw_dir.mkdir(parents=True, exist_ok=True)
     rows = []
     for model in args.models:
-        print(f"== {model}: schema={args.schema}, think={thinking_for(model)!r}, constrained_format={uses_constrained_format(model)}", flush=True)
+        print(f"== {model}: schema={args.schema}, think={thinking_for(model)!r}, num_ctx={options_for(model)['num_ctx']}, "
+              f"constrained_format={uses_constrained_format(model)}", flush=True)
         for report_number, report in enumerate(reports.itertuples(index=False), start=1):
             for run in range(1, args.runs + 1):
                 path = raw_file(raw_dir, model, report.report_id, run)

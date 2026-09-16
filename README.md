@@ -35,10 +35,10 @@ uv run benchmark.py --schema binary --models gemma4:26b gpt-oss:20b
 To benchmark gemma with thinking on as well (gpt-oss and the earlier gemma run are reused from `raw/`, only the new variant is called):
 
 ```powershell
-uv run benchmark.py --schema binary --models gemma4:26b@think gemma4:26b gpt-oss:20b
+uv run benchmark.py --schema binary --models gemma4:26b@think --force
 ```
 
-Watch `ollama ps` again: thinking adds output tokens, not weights, so the model should still fit. If reports take minutes or show `attempts` above 1, ask the raw files why:
+`--force` redoes any `@think` raw files produced by an earlier version at 8k context. Watch `ollama ps` again: the 32k context costs KV-cache memory; if gemma shows a large CPU share, set `THINKING_NUM_CTX` to 16384 in `extract.py`. If reports take minutes or show `attempts` above 1, ask the raw files why:
 
 ```powershell
 uv run inspect_raw.py --model gemma4:26b@think
@@ -98,7 +98,7 @@ Resume: a call is skipped when `raw/{schema}/{model}_{report_id}_{run}.json` alr
 
 ### 16 GB VRAM notes
 
-- `num_ctx` is fixed at 8192 in `OPTIONS` in `extract.py`. Do not raise it: the KV cache is what pushes a model off the GPU. Reports are about 400 tokens, the output about 1,500 tokens, and gpt-oss thinking adds 1,000 to 3,000, so 8192 is enough.
+- `num_ctx` is 8192 in `OPTIONS` in `extract.py` for every model except `@think` variants, which get `THINKING_NUM_CTX` = 32768 (gemma4:26b reasons for about 7,500 tokens per report, which fills 8k before any JSON; 16k and 32k were verified to load on the laptop). gpt-oss stays at 8192 and cannot get the thinking suffix. Reports are about 400 tokens, the output about 1,500 tokens, and gpt-oss thinking adds 1,000 to 3,000, so 8192 is enough for everything else.
 - After the first call, run `ollama ps` in another terminal. The model must show `100% GPU`. Any CPU share means it spilled and will run many times slower.
 - `gemma4:26b` once showed a CPU share in `ollama ps` on this machine. It is a MoE with only a few billion active parameters, so a partial CPU share can still be fast; if a report takes minutes, switch to `gemma4:12b`.
 - gpt-oss is hardcoded to `think="medium"`. Never run it at high on this machine: it overflows memory and never finishes. There is deliberately no CLI flag for thinking.
