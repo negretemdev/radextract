@@ -109,10 +109,15 @@ def call_model(client: Client, model: str, report_text: str, schema) -> dict:
             "validation_error": None,
         }
         if response.done_reason == "length":
-            record["validation_error"] = ("response cut off by num_ctx (done_reason=length): thinking plus JSON did not fit in "
-                                          f"{OPTIONS['num_ctx']} tokens; not retried because the same prompt would be cut off again")
+            record["validation_error"] = (f"response cut off by num_ctx={OPTIONS['num_ctx']} (done_reason=length) after "
+                                          f"{len(response.message.thinking or '')} characters of thinking; JSON incomplete or missing")
             attempts.append(record)
-            break
+            messages = messages + [
+                {"role": "assistant", "content": content},
+                {"role": "user", "content": "Your previous response ran out of space while reasoning and the JSON was cut off. "
+                 "Keep the reasoning brief this time and return the complete JSON object only."},
+            ]
+            continue
         try:
             extraction = schema.ReportExtraction.model_validate_json(strip_code_fences(content))
             attempts.append(record)

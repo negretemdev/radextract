@@ -44,7 +44,7 @@ Watch `ollama ps` again: thinking adds output tokens, not weights, so the model 
 uv run inspect_raw.py --model gemma4:26b@think
 ```
 
-It prints, per retried or failed call, each attempt's `done_reason`, thinking length and validation error. `done_reason=length` means thinking plus JSON did not fit in the 8k context (such calls are not retried, a retry would be cut off again); a validation error with `done_reason=stop` means the model broke a schema rule and the retry is doing its job. `--delete-failed` removes failed raw files so a later run redoes only those.
+It prints, per retried or failed call, each attempt's `done_reason`, thinking length and validation error. `done_reason=length` means thinking plus JSON did not fit in the 8k context; the call is retried with a request to reason briefly, which re-rolls the reasoning and usually fits (on the laptop, gemma4:26b thought about 27,000 characters per report, about 7,500 tokens, versus 3,000 for the cloud 31B, and 5 of the first 8 reports needed this retry). A validation error with `done_reason=stop` means the model broke a schema rule and the retry is doing its job. `--delete-failed` removes failed raw files so a later run redoes only those.
 
 `benchmark.py` runs `extract.py`, then `evaluate.py`, then `compare.py` (first two models) and writes `results_binary.csv`, `summary_binary.csv` and `disputed_binary.csv`. It takes the same options as `extract.py` (`--runs`, `--limit`, `--ids`, `--force`, `--allow-cloud`, `--host`). The three scripts can still be run separately.
 
