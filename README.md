@@ -283,3 +283,18 @@ The shared errors: both called chronic thromboembolic disease `false` for pulmon
 gemma's own misses were mostly over-calling: calcified nonenlarged hilar nodes as lymphadenopathy, a hilar node filed under mediastinal, "heart size upper normal" as cardiomegaly, adrenal thickening without a nodule as a nodule, and "no dedicated follow-up recommended" for a thyroid nodule overriding "continue annual screening". gpt-oss's were the impression overriding the findings (no effusion, R034), "prominent but not pathologically enlarged" nodes as lymphadenopathy (R038), and one finding lifted from the INDICATION line ("Known hepatic hemangioma", R035), which the `section` column flagged as `other`.
 
 Unlike the cloud comparison, where the 31B gemma was strong enough that gpt-oss added nothing, on the laptop the 26B gemma and gpt-oss:20b are tied on accuracy and their disagreements are informative. The pair costs about 3.7x the time of gemma alone.
+
+## gemma with thinking on (cloud 31B, same 50 reports)
+
+`gemma4:31b-cloud@think` versus the earlier `gemma4:31b-cloud` run with thinking off:
+
+| Metric | thinking off | thinking on |
+|---|---|---|
+| Accuracy, all 50 (1,050 values) | 99.7% (3 wrong) | 99.8% (2 wrong) |
+| Clean 30 | 100% | 100% |
+| Hard 20 | 99.3% | 99.5% |
+| Quotes verbatim | 98.8% | 99.9% |
+| Reasoning per report (characters) | 0 | median 3,100, max 6,800 |
+| Responses cut off by the 8k context | 0 | 0 |
+
+The two runs disagreed on a single field in 50 reports (R042 "possibly a focus of atelectasis vs a true nodule", which thinking got right). The two remaining errors are the "attention on follow-up imaging" convention. So on the 31B thinking neither helps nor hurts the statuses in a measurable way, but it fixes the quotes and it is safe within `num_ctx` 8192. The 26B on the laptop had 11 errors with thinking off and is the model with room to gain; that run decides whether `@think` becomes the default for gemma.
