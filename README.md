@@ -313,3 +313,17 @@ Unlike the cloud comparison, where the 31B gemma was strong enough that gpt-oss 
 | Responses cut off by the 8k context | 0 | 0 |
 
 The two runs disagreed on a single field in 50 reports (R042 "possibly a focus of atelectasis vs a true nodule", which thinking got right). The two remaining errors are the "attention on follow-up imaging" convention. So on the 31B thinking neither helps nor hurts the statuses in a measurable way, but it fixes the quotes and it is safe within `num_ctx` 8192. The 26B on the laptop had 11 errors with thinking off and is the model with room to gain; that run decides whether `@think` becomes the default for gemma.
+
+## Laptop run: gemma4:26b with thinking on (16k context, 8-bit cache, 26% CPU / 74% GPU)
+
+| Metric | gemma4:26b | gemma4:26b@think | gpt-oss:20b |
+|---|---|---|---|
+| Valid JSON | 50/50 | 48/50 | 50/50 |
+| Reports needing retries | 0 | 20 (six used all 4 attempts) | 1 |
+| Accuracy, all 50 (failed reports count as wrong) | 99.0% | 93.7% | 99.2% |
+| Accuracy on its valid reports only | 99.0% | 97.6% | 99.2% |
+| Clean 30 / hard 20 | 99.8% / 97.6% | 94.9% / 91.9% | 100% / 98.1% |
+| Mean time per report | 6 s | 159 s | 17 s |
+| Total for 50 reports | 5 min | 132 min | 14 min |
+
+Thinking made the 26B worse on every axis. It fixed 2 of the thinking-off errors and introduced 16 new ones, almost all of the same kind: findings plainly described in the report returned as `false` with no quote (R015 missed cardiomegaly, coronary calcification and the aortic aneurysm; R016 missed six findings), on first attempts that were not cut off. The two failures (R003, R047) burned four attempts and about nine minutes each. Against gpt-oss:20b it disagreed on 64 fields in 12 reports and was right on 3 of them. The cloud 31B had shown no such regression, so this is a property of the 26B on this hardware, not of thinking in general. Conclusion for the laptop: gemma runs with thinking off, and the two-model pipeline is `gemma4:26b` plus `gpt-oss:20b`.
