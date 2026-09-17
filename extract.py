@@ -22,6 +22,8 @@ SCHEMAS = {"chest_ct": "schema", "binary": "schema_binary", "ctpa": "schema_ctpa
 OPTIONS = {"temperature": 0, "seed": 42, "num_ctx": 8192}
 THINKING_NUM_CTX = 16384  # @think variants only: gemma4:26b reasons for 4-8k tokens per report. 32k put the whole model on the CPU. gpt-oss stays at 8192.
 MAX_RETRIES = 3
+TRANSIENT_RETRIES = 5        # server-side failures (overloaded, 5xx, connection reset) are retried after a pause
+TRANSIENT_PAUSE_S = 20
 
 # Model families run WITHOUT constrained format (the JSON schema goes into the prompt instead).
 # gpt-oss is prompt-only because format= was silently not enforced at think="medium" (see README).
@@ -129,6 +131,23 @@ def reparse(raw: dict, schema) -> dict:
     return raw
 
 
+def chat_with_transient_retries(client: Client, tag: str, messages, response_format, think, options):
+    """One chat call, retried after a pause when the server (not the model) fails: overloaded, 5xx, connection errors."""
+    for transient_attempt in range(1, TRANSIENT_RETRIES + 1):
+        try:
+            return client.chat(model=tag, messages=messages, format=response_format, think=think, options=options)
+        except ResponseError as error:
+            transient = error.status_code is not None and (error.status_code >= 500 or error.status_code == 429)
+            if not transient or transient_attempt == TRANSIENT_RETRIES:
+                raise
+            print(f"   server error {error.status_code} ({str(error.error)[:60]}), retrying in {TRANSIENT_PAUSE_S}s", flush=True)
+        except (ConnectionError, TimeoutError) as error:
+            if transient_attempt == TRANSIENT_RETRIES:
+                raise
+            print(f"   connection error ({str(error)[:60]}), retrying in {TRANSIENT_PAUSE_S}s", flush=True)
+        time.sleep(TRANSIENT_PAUSE_S)
+
+
 def call_model(client: Client, model: str, report_text: str, schema) -> dict:
     """Call the model, validate, retry on validation errors, and return everything worth saving."""
     tag, _ = split_model_tag(model)
@@ -142,7 +161,7 @@ def call_model(client: Client, model: str, report_text: str, schema) -> dict:
     started = time.perf_counter()
     for attempt in range(1, MAX_RETRIES + 2):
         attempt_started = time.perf_counter()
-        response = client.chat(model=tag, messages=messages, format=response_format, think=think, options=options)
+        response = chat_with_transient_retries(client, tag, messages, response_format, think, options)
         content = response.message.content or ""
         record = {
             "attempt": attempt,
