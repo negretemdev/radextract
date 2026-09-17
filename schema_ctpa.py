@@ -79,6 +79,7 @@ EXTRACTION_PROMPT = """You extract findings from one CT pulmonary angiogram (CTP
 Every field has two booleans:
 - "mentioned": true when the report addresses the finding at all, either describing it or explicitly negating it ("no", "without", "not identified", "negative for", "resolved", "normal", "unremarkable"); false when the report says nothing about it.
 - "present": true only when the finding is explicitly described as present in the report body (FINDINGS, IMPRESSION or the narrative); false when it is negated or not mentioned.
+Example for pleural_effusion: "Small left pleural effusion" gives mentioned true, present true; "No pleural effusion" gives mentioned true, present false; a report that never speaks of effusions gives mentioned false, present false. So present true always comes with mentioned true, and mentioned true with present false is exactly a negation.
 
 Rules:
 - Text in INDICATION, HISTORY or COMPARISON never counts. The three study-quality fields may be taken from TECHNIQUE; nothing else may.
