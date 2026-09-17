@@ -407,3 +407,17 @@ The gemma and gpt-oss pair on this schema, over the 49 reports both produced: 13
 | Quotes verbatim | 99.3% | 90.4% |
 
 Code repairs applied across the 100 calls: `pe_*` fields cleared on 30 negative studies, 3 quotes cut to 200 characters, 1 negation without a quote set to unmentioned. None of these would have been a retry under the three-state version, which retried on 33 of 50 gemma reports on the laptop. Pair disagreement: 4 fields in 4 of 50 reports, gemma right on all four (three are `pe_multiple` on a single thrombus spanning two vessels, one is an interlobar artery not counted as lobar), so every gpt-oss `present` error was exposed. `mentioned` disagreements: 123, none of them a review trigger.
+
+### Laptop run: two-boolean CTPA schema with the tiebreaker
+
+`uv run benchmark.py --schema ctpa --models gemma4:26b gpt-oss:20b --tiebreaker mistral-small3.2:24b`
+
+| | gemma4:26b | gpt-oss:20b | mistral-small3.2:24b (13 disputed reports only) |
+|---|---|---|---|
+| Valid JSON, first attempt | 50/50 | 50/50 | 13/13 |
+| Retries | 0 | 0 | 0 |
+| `present` accuracy | 99.0% (16 errors) | 99.8% (3 errors) | 96.5% (14 errors on 13 reports) |
+| Median time per report | 10 s | 25 s | 54 s |
+| Total | 8 min | 22 min | 12 min |
+
+Zero retries where the three-state version had retried on 33 of 50 gemma reports. gemma and gpt-oss disagreed on 19 fields in 13 reports; gpt-oss was right on 16. Eight of gemma's errors are one blind spot, `pe_lobar` left false for "right lower lobe pulmonary artery", which mistral-small shares, so the majority overruled a correct gpt-oss quote six times and `final_ctpa.csv` came out at 99.4%, below gpt-oss alone. Two changes followed: the prompt now names the lobar arteries ("right lower lobe pulmonary artery", "left upper lobe artery", "interlobar artery" are lobar; "segmental branches" are not), and `resolve.py` flags a report for review whenever the losing side of a dispute asserted the finding with a verbatim quote. On this run that flags 8 reports and catches every wrong field. For CTPA, list gpt-oss first: it has been the most accurate local model on this schema twice, and the primary's value is what survives an unresolved dispute.
