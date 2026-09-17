@@ -120,3 +120,41 @@ def flatten(extraction: ReportExtraction) -> dict:
         row[f"{name}_present"] = finding.present
         row[f"{name}_evidence"] = finding.evidence
     return row
+
+
+def normalize(data: dict) -> tuple[dict, dict]:
+    """Repair what constrained decoding cannot enforce, so that only a true finding without a quote triggers a retry.
+
+    false without a quote becomes null (a negation must be quoted), a quote on a null finding is dropped,
+    pe_ fields are cleared when there is no embolism, and quotes longer than 200 characters are cut (a prefix of a
+    verbatim quote is still verbatim). Returns the repaired data and the counts of repairs made.
+    """
+    counts = {"false_without_quote_to_null": 0, "quote_dropped_for_null": 0, "pe_fields_cleared": 0, "quote_truncated": 0}
+    if not isinstance(data, dict):
+        return data, {}
+    for name in FINDING_NAMES:
+        finding = data.get(name)
+        if not isinstance(finding, dict):
+            continue
+        evidence = finding.get("evidence")
+        if isinstance(evidence, str) and evidence.strip() == "":
+            evidence = None
+            finding["evidence"] = None
+        if isinstance(evidence, str) and len(evidence) > 200:
+            finding["evidence"] = evidence[:200]
+            counts["quote_truncated"] += 1
+        if finding.get("present") is False and evidence is None:
+            finding["present"] = None
+            counts["false_without_quote_to_null"] += 1
+        elif finding.get("present") is None and evidence is not None:
+            finding["evidence"] = None
+            counts["quote_dropped_for_null"] += 1
+    embolism = data.get("pulmonary_embolism")
+    if not (isinstance(embolism, dict) and embolism.get("present") is True):
+        for name in PE_SUBFIELDS:
+            finding = data.get(name)
+            if isinstance(finding, dict) and (finding.get("present") is not None or finding.get("evidence") is not None):
+                finding["present"] = None
+                finding["evidence"] = None
+                counts["pe_fields_cleared"] += 1
+    return data, {key: value for key, value in counts.items() if value}

@@ -86,12 +86,47 @@ def strip_code_fences(text: str) -> str:
     return match.group(1) if match else text.strip()
 
 
-def compact_validation_error(error: ValidationError) -> str:
+def compact_validation_error(error) -> str:
+    if not isinstance(error, ValidationError):
+        return f"- (root): {error}"
     lines = []
     for item in error.errors():
         location = ".".join(str(part) for part in item["loc"]) or "(root)"
         lines.append(f"- {location}: {item['msg']}")
     return "\n".join(lines)
+
+
+def parse_and_validate(schema, content: str):
+    """Parse the model output, apply the schema's repairs when it defines normalize(), validate.
+    Returns (extraction, repairs); raises ValueError for invalid JSON and ValidationError for schema violations."""
+    try:
+        data = json.loads(strip_code_fences(content))
+    except json.JSONDecodeError as error:
+        raise ValueError(f"invalid JSON: {error}")
+    repairs = {}
+    if hasattr(schema, "normalize"):
+        data, repairs = schema.normalize(data)
+    return schema.ReportExtraction.model_validate(data), repairs
+
+
+def reparse(raw: dict, schema) -> dict:
+    """Re-run parsing, repairs and validation on the stored attempts of a raw file; no model call.
+    The first attempt that validates wins. The attempt count stays what it was at run time."""
+    raw["valid_json"] = False
+    raw["extraction"] = None
+    for attempt in raw["attempts"]:
+        try:
+            extraction, repairs = parse_and_validate(schema, attempt["content"])
+        except (ValidationError, ValueError) as error:
+            attempt["validation_error"] = compact_validation_error(error)
+            continue
+        attempt["validation_error"] = None
+        attempt["repairs"] = repairs
+        raw["valid_json"] = True
+        raw["extraction"] = extraction.model_dump()
+        break
+    raw["reparsed"] = True
+    return raw
 
 
 def call_model(client: Client, model: str, report_text: str, schema) -> dict:
@@ -130,10 +165,10 @@ def call_model(client: Client, model: str, report_text: str, schema) -> dict:
             ]
             continue
         try:
-            extraction = schema.ReportExtraction.model_validate_json(strip_code_fences(content))
+            extraction, record["repairs"] = parse_and_validate(schema, content)
             attempts.append(record)
             break
-        except ValidationError as error:
+        except (ValidationError, ValueError) as error:
             record["validation_error"] = compact_validation_error(error)
             attempts.append(record)
             messages = messages + [
@@ -235,6 +270,7 @@ def main():
     parser.add_argument("--host", default="http://localhost:11434")
     parser.add_argument("--limit", type=int, default=None, help="only the first N reports")
     parser.add_argument("--force", action="store_true", help="re-run even if the raw file exists")
+    parser.add_argument("--reparse", action="store_true", help="re-validate existing raw files from their stored attempts (no model calls)")
     parser.add_argument("--allow-cloud", action="store_true", help="permit *-cloud / *:cloud model tags (synthetic data only)")
     args = parser.parse_args()
 
@@ -280,6 +316,10 @@ def main():
                 if path.exists() and not args.force:
                     raw = json.loads(path.read_text(encoding="utf-8"))
                     note = "resumed from raw file"
+                    if args.reparse:
+                        raw = reparse(raw, schema)
+                        path.write_text(json.dumps(raw, indent=1), encoding="utf-8")
+                        note = "reparsed from raw file"
                 else:
                     raw = call_model(client, model, report.report_text, schema)
                     path.write_text(json.dumps(raw, indent=1), encoding="utf-8")

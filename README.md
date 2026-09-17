@@ -102,6 +102,7 @@ It prints, per retried or failed call, each attempt's `done_reason`, thinking le
 | `--host` | `http://localhost:11434` | Ollama server |
 | `--limit` | all | only the first N reports |
 | `--force` | off | re-run even if the raw file exists |
+| `--reparse` | off | re-validate existing raw files from their stored attempts, no model calls |
 | `--allow-cloud` | off | permit `*-cloud` / `*:cloud` tags (synthetic data only) |
 
 Resume: a call is skipped when `raw/{schema}/{model}_{report_id}_{run}.json` already exists, and its row is rebuilt from that file (the evidence check runs again at rebuild time). Delete a raw file or pass `--force` to redo a call.
@@ -347,7 +348,7 @@ Conventions, stated in the prompt and enforced by validators where possible:
 - Levels: `pe_saddle`, `pe_main`, `pe_lobar` (interlobar counts as lobar), `pe_segmental`, `pe_subsegmental`, true for each level described, false for a level explicitly negated. Sides: "bilateral" sets both. `pe_multiple` is true when more than one embolus, filling defect or vessel is involved. A nonocclusive clot makes `pe_nonocclusive` true and `pe_occlusive` false, and the reverse; both true when both are described.
 - `suboptimal_study` is true when the report calls itself limited, suboptimal, degraded or nondiagnostic for embolism, false when opacification is adequate or good without a limiting artifact. A motion artifact that "does not limit evaluation" sets `motion_artifact` true and `suboptimal_study` false. A nondiagnostic study leaves `pulmonary_embolism` null.
 - `right_heart_strain` is true for RV dilation or enlargement, RV/LV above 1, septal flattening or bowing, IVC reflux, or the words "right heart strain". `pulmonary_artery_enlargement` needs the words enlarged or dilated; a measurement alone does not count. "The lungs are clear" negates the seven parenchymal findings. Septic emboli are nodules, not pulmonary embolism.
-- A quote is required for true and false and must be null for null (validator).
+- A quote is required for true (validator, retried). The other consistency rules are repaired in code before validation rather than retried, because constrained decoding cannot enforce them and small models broke them constantly: false without a quote becomes null, a quote on a null finding is dropped, `pe_*` fields are cleared when there is no embolism, and a quote over 200 characters is cut (a prefix of a verbatim quote is still verbatim). The repairs made are recorded per attempt in the raw file (`repairs`). `--reparse` re-runs parsing, repairs and validation on existing raw files from their stored attempts with no model call, so a run made before a rule change can be re-scored in seconds.
 
 `evaluate.py` reports `accuracy_<field>` (exact: true/false/null) and `presence_<field>` (asserted or not). `compare.py` judges disagreement on presence and lists false-versus-null differences in their own column of `disputed.csv`.
 
@@ -372,3 +373,20 @@ Both cloud models ran the 50 reports twice: with the first prompt, then with the
 | Quotes verbatim | 99.9% | 99.7% | 92.8% | 91.1% |
 
 Pair disagreement with the sharpened prompt: 7 fields in 7 of 50 reports, gemma right on all 7, so every gpt-oss presence error was exposed. The false-versus-null differences (109) are far more common than presence disputes and are correctly kept out of the review list. gpt-oss's remaining misses: twice it flagged `pe_lobar` for a "lower lobe segmental artery" (a lobe name mistaken for the lobar level; the prompt now says so explicitly), it inferred a perfusion defect from an infarct, missed a hedged infarct ("infarct or pneumonia"), missed "limits evaluation" as suboptimal, and called a thrombus spanning two vessels single.
+
+### Laptop run: five models on the CTPA set (before the repairs existed)
+
+`uv run benchmark.py --schema ctpa --models gemma4:26b gpt-oss:20b qwen3.5:9b mistral-small3.2:24b mistral-nemo:12b`, 8k context, thinking off for gemma and qwen, gpt-oss at medium.
+
+| | gemma4:26b | gpt-oss:20b | qwen3.5:9b | mistral-small3.2:24b | mistral-nemo:12b |
+|---|---|---|---|---|---|
+| Valid JSON | 49/50 | 50/50 | 21/50 | 50/50 | 5/50 |
+| Reports needing retries | 33 | 8 | 41 | 19 | 48 |
+| Presence accuracy on its valid reports | 99.5% | 99.6% | 99.2% | 99.4% | 98.7% |
+| Exact accuracy on its valid reports | 87.8% | 91.9% | 86.0% | 91.8% | 88.4% |
+| Median time per report | 13 s | 21 s | 47 s | 52 s | 53 s |
+| Total | 12 min | 20 min | 32 min | 54 min | 43 min |
+
+Every model that produced valid output was 98.7 to 99.6% accurate on presence, so the failures were not reading errors. Under constrained `format` the JSON and the types are guaranteed, which leaves only the consistency rules the grammar cannot see: a negation without its quote, and `pe_*` values filled in for a negative study. Those rules are now repaired in code instead of retried (see above), and `--reparse` re-scores this run from the stored attempts.
+
+The gemma and gpt-oss pair on this schema, over the 49 reports both produced: 13 disputed fields in 9 reports, gemma right on 6 and gpt-oss on 7, no shared errors, so every presence error of either model was exposed by the disagreement. mistral-small3.2:24b is the only candidate that behaved as a third vote (99.4%, 50/50 valid, right on 9 of the 13 pair disputes) but at 52 seconds a report it spills to the CPU and would add 6 disputes of its own.

@@ -31,6 +31,7 @@ def main():
     parser.add_argument("--host", default="http://localhost:11434")
     parser.add_argument("--limit", type=int, default=None)
     parser.add_argument("--force", action="store_true")
+    parser.add_argument("--reparse", action="store_true", help="re-validate existing raw files, no model calls")
     parser.add_argument("--allow-cloud", action="store_true")
     args = parser.parse_args()
 
@@ -49,6 +50,8 @@ def main():
         extract += ["--limit", str(args.limit)]
     if args.force:
         extract.append("--force")
+    if args.reparse:
+        extract.append("--reparse")
     if args.allow_cloud:
         extract.append("--allow-cloud")
     run(extract)
