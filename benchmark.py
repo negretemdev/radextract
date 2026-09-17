@@ -11,6 +11,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pandas as pd
+
 SCHEMAS = {"chest_ct": "ground_truth.csv", "binary": "ground_truth_binary.csv", "ctpa": "ground_truth_ctpa.csv"}
 
 
@@ -32,6 +34,7 @@ def main():
     parser.add_argument("--limit", type=int, default=None)
     parser.add_argument("--force", action="store_true")
     parser.add_argument("--reparse", action="store_true", help="re-validate existing raw files, no model calls")
+    parser.add_argument("--tiebreaker", default=None, help="third model, run only on the reports where the first two disagree")
     parser.add_argument("--allow-cloud", action="store_true")
     args = parser.parse_args()
 
@@ -59,7 +62,35 @@ def main():
     if len(args.models) >= 2:
         run(["compare.py", "--schema", args.schema, "--results", str(results), "--models", args.models[0], args.models[1],
              "--ground-truth", ground_truth, "--output", str(disputed)])
-    print(f"\nDone. Files: {results}, {summary}" + (f", {disputed}" if len(args.models) >= 2 else "") + f". Send {results} for review.")
+    if args.tiebreaker and len(args.models) >= 2:
+        disputed_ids = pd.read_csv(disputed, dtype={"report_id": str})
+        disputed_ids = disputed_ids[disputed_ids["n_disputed"] > 0][["report_id"]]
+        if len(disputed_ids):
+            ids_file = Path(f"disputed_ids_{args.schema}.csv")
+            disputed_ids.to_csv(ids_file, index=False)
+            tiebreak_results = Path(f"results_{args.schema}_tiebreaker.csv")
+            tiebreak = ["extract.py", "--schema", args.schema, "--output", str(tiebreak_results), "--host", args.host,
+                        "--ids", str(ids_file), "--models", args.tiebreaker]
+            if args.input is not None:
+                tiebreak += ["--input", str(args.input)]
+            if args.allow_cloud:
+                tiebreak.append("--allow-cloud")
+            run(tiebreak)
+            merged = pd.concat([pd.read_csv(results, dtype={"report_id": str}), pd.read_csv(tiebreak_results, dtype={"report_id": str})])
+            merged = merged.drop_duplicates(subset=["report_id", "model", "run"], keep="last")
+            merged.to_csv(results, index=False, encoding="utf-8")
+            tiebreak_results.unlink()
+            ids_file.unlink()
+            print(f"\ntiebreaker {args.tiebreaker} ran on {len(disputed_ids)} disputed reports; rows merged into {results}")
+        else:
+            print("\nno disputed reports, tiebreaker not needed")
+    resolve = ["resolve.py", "--schema", args.schema, "--results", str(results), "--models", *args.models]
+    if args.tiebreaker:
+        resolve.append(args.tiebreaker)
+    if args.input is not None:
+        resolve += ["--input", str(args.input)]
+    run(resolve)
+    print(f"\nDone. Files: {results}, {summary}" + (f", {disputed}" if len(args.models) >= 2 else "") + f", final_{args.schema}.csv. Send {results} for review.")
 
 
 if __name__ == "__main__":

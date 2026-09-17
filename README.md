@@ -17,6 +17,7 @@ report text rather than trusting the model.
 | `extract.py` | Runs models over `reports.csv`, writes `results.csv` (one row per report, model and run) and one raw JSON per call in `raw/{schema}/`. `--schema chest_ct` (default), `--schema binary` or `--schema ctpa`; the input CSV defaults to the schema's reports file. |
 | `inspect_raw.py` | Explains retries and failures from `raw/`: done_reason, thinking length, validation error per attempt. |
 | `evaluate.py` | Scores `results.csv` against the schema's ground truth, writes `summary.csv`. |
+| `resolve.py` | Merges two or three models into `final_<schema>.csv`: every column of the input CSV, then one resolved value per field (majority on presence), `resolved_by`, `needs_review`, `disputed_fields`. |
 | `compare.py` | Field-by-field disagreement between two models on presence (asserted or not), writes `disputed.csv`; false-versus-null differences are counted separately and quotes are ignored on purpose. |
 | `reports.csv` | 30 synthetic chest CT reports (`report_id`, `report_text`). Fictional, no patient identifiers. |
 | `ground_truth.csv` | Hand-filled reference value for every `chest_ct` field of every report (53 columns). |
@@ -56,7 +57,7 @@ uv run inspect_raw.py --model gemma4:26b@think
 
 It prints, per retried or failed call, each attempt's `done_reason`, thinking length and validation error. `done_reason=length` means thinking plus JSON did not fit in the 8k context; the call is retried with a request to reason briefly, which re-rolls the reasoning and usually fits (on the laptop, gemma4:26b thought about 27,000 characters per report, about 7,500 tokens, versus 3,000 for the cloud 31B, and 5 of the first 8 reports needed this retry). A validation error with `done_reason=stop` means the model broke a schema rule and the retry is doing its job. `--delete-failed` removes failed raw files so a later run redoes only those.
 
-`benchmark.py` runs `extract.py`, then `evaluate.py`, then `compare.py` (first two models) and writes `results_binary.csv`, `summary_binary.csv` and `disputed_binary.csv`. It takes the same options as `extract.py` (`--runs`, `--limit`, `--ids`, `--force`, `--allow-cloud`, `--host`). The three scripts can still be run separately.
+`benchmark.py` runs `extract.py`, then `evaluate.py`, then `compare.py` (first two models), then `resolve.py`. With `--tiebreaker <model>` the third model runs only on the reports where the first two disagreed, its rows are merged into the results file, and `resolve.py` uses it as the deciding vote and writes `results_binary.csv`, `summary_binary.csv` and `disputed_binary.csv`. It takes the same options as `extract.py` (`--runs`, `--limit`, `--ids`, `--force`, `--allow-cloud`, `--host`). The three scripts can still be run separately.
 
 - After the first call, run `ollama ps` in a second terminal: each model must show `100% GPU`. If it shows a CPU share and reports take minutes, stop and switch to `gemma4:12b`.
 - The run resumes if interrupted: re-run the same `extract.py` command and finished reports are skipped.
@@ -356,8 +357,10 @@ Conventions, stated in the prompt and enforced by validators where possible:
 
 ```powershell
 git pull
-uv run benchmark.py --schema ctpa --models gemma4:26b gpt-oss:20b
+uv run benchmark.py --schema ctpa --models gemma4:26b gpt-oss:20b --tiebreaker mistral-small3.2:24b
 ```
+
+The pair runs all reports; mistral-small runs only the disputed ones (about 20% of reports, so its slowness costs little); `final_ctpa.csv` is the file to read. `needs_review` is 1 only when two models disagree with no third vote, or the deciding vote's quote is not verbatim. For real data, point `--input` at your own CSV (columns `report_id` and `report_text`, any other columns are carried into `final_ctpa.csv` unchanged) and never pass `--allow-cloud`.
 
 The three-state version of this schema (present true/false/null) was replaced by the two-boolean one after the five-model laptop run below; the cloud validation tables above it refer to the three-state version.
 
