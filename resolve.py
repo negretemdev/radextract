@@ -21,6 +21,21 @@ import pandas as pd
 from evaluate import SCHEMAS, is_present
 
 
+def quote_is_verbatim(value) -> bool:
+    """evidence_ok reads back as 1, 1.0, '1' or blank depending on the column."""
+    try:
+        return float(value) == 1
+    except (TypeError, ValueError):
+        return False
+
+
+def quote_is_wrong(value) -> bool:
+    try:
+        return float(value) == 0
+    except (TypeError, ValueError):
+        return False
+
+
 def main():
     parser = argparse.ArgumentParser(description="Resolve two or three models into one final CSV per report.")
     parser.add_argument("--results", type=Path, default=Path("results.csv"))
@@ -66,8 +81,7 @@ def main():
                 deciders = [model for model in winners if model not in voters[:2]]
                 resolved_by = "tiebreaker" if resolved_by == "agreement" else resolved_by
                 for decider in deciders:
-                    evidence_ok = rows_by_model[decider].at[report_id, field.replace("_present", "_evidence_ok")]
-                    if str(evidence_ok) == "0":
+                    if quote_is_wrong(rows_by_model[decider].at[report_id, field.replace("_present", "_evidence_ok")]):
                         needs_review = 1
             else:
                 winner = voters[0]
@@ -75,7 +89,7 @@ def main():
                 needs_review = 1
             if yes and no and not is_present(rows_by_model[winner].at[report_id, field]):
                 for model in yes:
-                    if str(rows_by_model[model].at[report_id, field.replace("_present", "_evidence_ok")]) == "1":
+                    if quote_is_verbatim(rows_by_model[model].at[report_id, field.replace("_present", "_evidence_ok")]):
                         needs_review = 1
             if yes and no:
                 name = field.removesuffix("_present")
