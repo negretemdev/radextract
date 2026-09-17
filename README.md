@@ -359,3 +359,16 @@ uv run benchmark.py --schema ctpa --models gemma4:26b gpt-oss:20b
 ```
 
 `benchmark.py` compares the first two models; with a third model listed, run `compare.py --schema ctpa --results results_ctpa.csv --models <a> <b> --ground-truth ground_truth_ctpa.csv` for the other pairs. Send `results_ctpa.csv` for review.
+
+### Cloud validation of the CTPA set
+
+Both cloud models ran the 50 reports twice: with the first prompt, then with the prompt after three rules were sharpened (the word "acute" or "chronic" must appear in the report, a mild or non-limiting artifact does not make a study suboptimal, adequate opacification makes poor contrast false). No reference value changed except P019 `suboptimal_study`, set to false under the sharpened rule.
+
+| Metric | gemma4:31b-cloud, first prompt | gemma4:31b-cloud, sharpened | gpt-oss:20b-cloud, first prompt | gpt-oss:20b-cloud, sharpened |
+|---|---|---|---|---|
+| Valid JSON | 50/50 | 50/50 | 50/50 | 50/50 |
+| Presence accuracy (1,550 values) | 99.6% | 100% | 99.5% | 99.5% |
+| Exact accuracy (true/false/null) | 97.0% | 99.1% | 90.1% | 92.9% |
+| Quotes verbatim | 99.9% | 99.7% | 92.8% | 91.1% |
+
+Pair disagreement with the sharpened prompt: 7 fields in 7 of 50 reports, gemma right on all 7, so every gpt-oss presence error was exposed. The false-versus-null differences (109) are far more common than presence disputes and are correctly kept out of the review list. gpt-oss's remaining misses: twice it flagged `pe_lobar` for a "lower lobe segmental artery" (a lobe name mistaken for the lobar level; the prompt now says so explicitly), it inferred a perfusion defect from an infarct, missed a hedged infarct ("infarct or pneumonia"), missed "limits evaluation" as suboptimal, and called a thrombus spanning two vessels single.
