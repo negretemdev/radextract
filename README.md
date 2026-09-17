@@ -395,3 +395,15 @@ Pair disagreement with the sharpened prompt: 7 fields in 7 of 50 reports, gemma 
 Every model that produced valid output was 98.7 to 99.6% accurate on presence, so the failures were not reading errors. Under constrained `format` the JSON and the types are guaranteed, which leaves only the consistency rules the grammar cannot see: a negation without its quote, and `pe_*` values filled in for a negative study. Those rules are now repaired in code instead of retried (see above), and `--reparse` re-scores this run from the stored attempts.
 
 The gemma and gpt-oss pair on this schema, over the 49 reports both produced: 13 disputed fields in 9 reports, gemma right on 6 and gpt-oss on 7, no shared errors, so every presence error of either model was exposed by the disagreement. mistral-small3.2:24b is the only candidate that behaved as a third vote (99.4%, 50/50 valid, right on 9 of the 13 pair disputes) but at 52 seconds a report it spills to the CPU and would add 6 disputes of its own.
+
+### Cloud validation of the two-boolean CTPA schema (final prompt)
+
+| Metric | gemma4:31b-cloud | gpt-oss:20b-cloud |
+|---|---|---|
+| Valid JSON, first attempt | 50/50 | 50/50 |
+| Retries | 0 | 0 |
+| `present` accuracy (1,550 values) | 100% | 99.7% |
+| `mentioned` accuracy | 99.3% | 91.5% |
+| Quotes verbatim | 99.3% | 90.4% |
+
+Code repairs applied across the 100 calls: `pe_*` fields cleared on 30 negative studies, 3 quotes cut to 200 characters, 1 negation without a quote set to unmentioned. None of these would have been a retry under the three-state version, which retried on 33 of 50 gemma reports on the laptop. Pair disagreement: 4 fields in 4 of 50 reports, gemma right on all four (three are `pe_multiple` on a single thrombus spanning two vessels, one is an interlobar artery not counted as lobar), so every gpt-oss `present` error was exposed. `mentioned` disagreements: 123, none of them a review trigger.
