@@ -153,6 +153,7 @@ FLAT_COLUMNS += [f"largest_nodule_{field}" for field in LargestNodule.model_fiel
 FLAT_COLUMNS += [f"follow_up_{field}" for field in FollowUp.model_fields]
 SCORED_FIELDS = [column for column in FLAT_COLUMNS if not column.endswith("_evidence")]
 NUMERIC_FIELDS = {"nodule_count", "largest_nodule_size_mm", "follow_up_interval_months"}
+REPORTS_FILE = "reports.csv"
 GROUND_TRUTH_FILE = "ground_truth.csv"
 
 

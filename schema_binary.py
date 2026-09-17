@@ -53,6 +53,7 @@ FINDING_NAMES = [name for name, field in ReportExtraction.model_fields.items() i
 FLAT_COLUMNS = [f"{name}_{suffix}" for name in FINDING_NAMES for suffix in ("present", "evidence")]
 SCORED_FIELDS = [f"{name}_present" for name in FINDING_NAMES]
 NUMERIC_FIELDS = set()
+REPORTS_FILE = "reports.csv"
 GROUND_TRUTH_FILE = "ground_truth_binary.csv"
 
 EXTRACTION_PROMPT = """You extract findings from one chest CT radiology report. Reply with JSON only.

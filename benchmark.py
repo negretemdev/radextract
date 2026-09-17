@@ -11,7 +11,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-SCHEMAS = {"chest_ct": "ground_truth.csv", "binary": "ground_truth_binary.csv"}
+SCHEMAS = {"chest_ct": "ground_truth.csv", "binary": "ground_truth_binary.csv", "ctpa": "ground_truth_ctpa.csv"}
 
 
 def run(step: list[str]):
@@ -25,7 +25,7 @@ def main():
     parser = argparse.ArgumentParser(description="Run extract.py, evaluate.py and compare.py in one go.")
     parser.add_argument("--models", nargs="+", required=True, help="Ollama model tags, e.g. gemma4:26b gpt-oss:20b")
     parser.add_argument("--schema", choices=SCHEMAS, default="binary")
-    parser.add_argument("--input", type=Path, default=Path("reports.csv"))
+    parser.add_argument("--input", type=Path, default=None, help="default: the schema's reports file")
     parser.add_argument("--ids", type=Path, default=None)
     parser.add_argument("--runs", type=int, default=1)
     parser.add_argument("--host", default="http://localhost:11434")
@@ -39,8 +39,10 @@ def main():
     disputed = Path(f"disputed_{args.schema}.csv")
     ground_truth = SCHEMAS[args.schema]
 
-    extract = ["extract.py", "--schema", args.schema, "--input", str(args.input), "--output", str(results),
+    extract = ["extract.py", "--schema", args.schema, "--output", str(results),
                "--host", args.host, "--runs", str(args.runs), "--models", *args.models]
+    if args.input is not None:
+        extract += ["--input", str(args.input)]
     if args.ids is not None:
         extract += ["--ids", str(args.ids)]
     if args.limit is not None:

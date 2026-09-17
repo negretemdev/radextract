@@ -12,10 +12,12 @@ report text rather than trusting the model.
 | `schema.py` | Schema `chest_ct`: Pydantic models (`Observation` with a 3-state status, `LargestNodule`, `FollowUp`, `ReportExtraction`) and the extraction prompt. Adding a finding is one line in `ReportExtraction`; the scripts discover the fields at runtime. |
 | `schema_binary.py` | Schema `binary`: the same 20 findings plus `follow_up_recommended`, each a `BinaryObservation` (`present: bool` + quote). false covers both negated and not mentioned. |
 | `benchmark.py` | One command: `extract.py`, then `evaluate.py`, then `compare.py`; writes `results_<schema>.csv`, `summary_<schema>.csv`, `disputed_<schema>.csv`. |
-| `extract.py` | Runs models over `reports.csv`, writes `results.csv` (one row per report, model and run) and one raw JSON per call in `raw/{schema}/`. `--schema chest_ct` (default) or `--schema binary`. |
+| `schema_ctpa.py` | Schema `ctpa`: 31 CT pulmonary angiogram fields, each `present: true / false / null` (described / negated / not mentioned) plus a quote. |
+| `reports_ctpa.csv`, `ground_truth_ctpa.csv` | 50 synthetic CTPA reports (P001–P050) and their hand-filled reference (63 columns). |
+| `extract.py` | Runs models over `reports.csv`, writes `results.csv` (one row per report, model and run) and one raw JSON per call in `raw/{schema}/`. `--schema chest_ct` (default), `--schema binary` or `--schema ctpa`; the input CSV defaults to the schema's reports file. |
 | `inspect_raw.py` | Explains retries and failures from `raw/`: done_reason, thinking length, validation error per attempt. |
 | `evaluate.py` | Scores `results.csv` against the schema's ground truth, writes `summary.csv`. |
-| `compare.py` | Field-by-field disagreement between two models, writes `disputed.csv`; quotes are ignored on purpose. |
+| `compare.py` | Field-by-field disagreement between two models on presence (asserted or not), writes `disputed.csv`; false-versus-null differences are counted separately and quotes are ignored on purpose. |
 | `reports.csv` | 30 synthetic chest CT reports (`report_id`, `report_text`). Fictional, no patient identifiers. |
 | `ground_truth.csv` | Hand-filled reference value for every `chest_ct` field of every report (53 columns). |
 | `ground_truth_binary.csv` | The same reference collapsed to true/false per finding (derived from `ground_truth.csv`). |
@@ -327,3 +329,33 @@ The two runs disagreed on a single field in 50 reports (R042 "possibly a focus o
 | Total for 50 reports | 5 min | 132 min | 14 min |
 
 Thinking made the 26B worse on every axis. It fixed 2 of the thinking-off errors and introduced 16 new ones, almost all of the same kind: findings plainly described in the report returned as `false` with no quote (R015 missed cardiomegaly, coronary calcification and the aortic aneurysm; R016 missed six findings), on first attempts that were not cut off. The two failures (R003, R047) burned four attempts and about nine minutes each. Against gpt-oss:20b it disagreed on 64 fields in 12 reports and was right on 3 of them. The cloud 31B had shown no such regression, so this is a property of the 26B on this hardware, not of thinking in general. Conclusion for the laptop: gemma runs with thinking off, and the two-model pipeline is `gemma4:26b` plus `gpt-oss:20b`.
+
+## CTPA schema (`--schema ctpa`)
+
+Built for cohort filtering of CT pulmonary angiogram reports. Every field is `present: true | false | null` with a verbatim quote: true when the finding is explicitly described, false when explicitly negated, null when the report says nothing. Filtering uses `true`; the false/null split is kept because a negated finding and a silent report are different evidence, and it is scored separately so it never inflates the review list.
+
+| Group | Fields |
+|---|---|
+| Study quality (may be quoted from TECHNIQUE) | `suboptimal_study`, `poor_contrast_opacification`, `motion_artifact` |
+| Embolism | `pulmonary_embolism`, `pe_acute`, `pe_chronic`, `pe_saddle`, `pe_main`, `pe_lobar`, `pe_segmental`, `pe_subsegmental`, `pe_right`, `pe_left`, `pe_multiple`, `pe_occlusive`, `pe_nonocclusive` |
+| Consequences | `right_heart_strain`, `pulmonary_artery_enlargement`, `perfusion_defect`, `pulmonary_infarct` |
+| Lungs, pleura, heart | `consolidation`, `ground_glass_opacity`, `atelectasis`, `pulmonary_nodule`, `emphysema`, `mosaic_attenuation`, `pleural_effusion`, `pneumothorax`, `pericardial_effusion`, `cardiomegaly`, `lymphadenopathy` |
+
+Conventions, stated in the prompt and enforced by validators where possible:
+
+- The `pe_*` fields must be null unless `pulmonary_embolism` is true (validator). "No acute pulmonary embolism" with chronic thrombus described means `pulmonary_embolism` true, `pe_acute` false, `pe_chronic` true, which is the case both local models missed on the earlier set. "Acute component cannot be excluded" leaves `pe_acute` null.
+- Levels: `pe_saddle`, `pe_main`, `pe_lobar` (interlobar counts as lobar), `pe_segmental`, `pe_subsegmental`, true for each level described, false for a level explicitly negated. Sides: "bilateral" sets both. `pe_multiple` is true when more than one embolus, filling defect or vessel is involved. A nonocclusive clot makes `pe_nonocclusive` true and `pe_occlusive` false, and the reverse; both true when both are described.
+- `suboptimal_study` is true when the report calls itself limited, suboptimal, degraded or nondiagnostic for embolism, false when opacification is adequate or good without a limiting artifact. A motion artifact that "does not limit evaluation" sets `motion_artifact` true and `suboptimal_study` false. A nondiagnostic study leaves `pulmonary_embolism` null.
+- `right_heart_strain` is true for RV dilation or enlargement, RV/LV above 1, septal flattening or bowing, IVC reflux, or the words "right heart strain". `pulmonary_artery_enlargement` needs the words enlarged or dilated; a measurement alone does not count. "The lungs are clear" negates the seven parenchymal findings. Septic emboli are nodules, not pulmonary embolism.
+- A quote is required for true and false and must be null for null (validator).
+
+`evaluate.py` reports `accuracy_<field>` (exact: true/false/null) and `presence_<field>` (asserted or not). `compare.py` judges disagreement on presence and lists false-versus-null differences in their own column of `disputed.csv`.
+
+### Laptop run
+
+```powershell
+git pull
+uv run benchmark.py --schema ctpa --models gemma4:26b gpt-oss:20b
+```
+
+`benchmark.py` compares the first two models; with a third model listed, run `compare.py --schema ctpa --results results_ctpa.csv --models <a> <b> --ground-truth ground_truth_ctpa.csv` for the other pairs. Send `results_ctpa.csv` for review.

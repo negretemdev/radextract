@@ -14,8 +14,13 @@ from pathlib import Path
 
 import pandas as pd
 
-SCHEMAS = {"chest_ct": "schema", "binary": "schema_binary"}
+SCHEMAS = {"chest_ct": "schema", "binary": "schema_binary", "ctpa": "schema_ctpa"}
 NUMERIC_FIELDS = {"nodule_count", "largest_nodule_size_mm", "follow_up_interval_months"}
+
+
+def is_present(value) -> bool:
+    """True only for an asserted finding: True/"True" (binary and ctpa schemas) or "present" (chest_ct)."""
+    return value is True or str(value).strip() in ("True", "present")
 
 
 def values_match(field: str, predicted, truth) -> bool:
@@ -35,6 +40,8 @@ def main():
     parser.add_argument("--ground-truth", type=Path, default=None, help="defaults to the schema's ground truth file")
     parser.add_argument("--output", type=Path, default=Path("summary.csv"))
     args = parser.parse_args()
+    # accuracy_<field> is an exact match (true/false/null or the status string); presence_<field> only asks
+    # whether the finding was asserted, so false versus null (negated versus not mentioned) does not count.
 
     schema = importlib.import_module(SCHEMAS[args.schema])
     ground_truth_path = args.ground_truth or Path(schema.GROUND_TRUTH_FILE)
@@ -57,6 +64,13 @@ def main():
             for index in results.index
         ]
     correct.loc[results["valid_json"] == 0, :] = False
+    presence_correct = pd.DataFrame(index=results.index)
+    for field in fields:
+        presence_correct[field] = [
+            is_present(results.at[index, field]) == is_present(truth.at[results.at[index, "report_id"], field])
+            for index in results.index
+        ]
+    presence_correct.loc[results["valid_json"] == 0, :] = False
 
     evidence_ok_columns = [column for column in results.columns if column.endswith("_evidence_ok")]
     evidence_columns = [column for column in results.columns if column.endswith("_evidence")]
@@ -80,8 +94,11 @@ def main():
             summary.setdefault("identical_runs_rate", {})[model] = pd.Series(identical_values).mean()
             summary.setdefault("identical_runs_rate_with_evidence", {})[model] = pd.Series(identical_with_evidence).mean()
         summary.setdefault("accuracy_overall", {})[model] = model_correct[fields].to_numpy().mean()
+        summary.setdefault("presence_accuracy_overall", {})[model] = presence_correct.loc[rows.index, fields].to_numpy().mean()
         for field in fields:
             summary.setdefault(f"accuracy_{field}", {})[model] = model_correct[field].mean()
+        for field in fields:
+            summary.setdefault(f"presence_{field}", {})[model] = presence_correct.loc[rows.index, field].mean()
 
     agreement = {}
     if len(models) > 1:

@@ -18,7 +18,7 @@ import pandas as pd
 from ollama import Client, ResponseError
 from pydantic import ValidationError
 
-SCHEMAS = {"chest_ct": "schema", "binary": "schema_binary"}
+SCHEMAS = {"chest_ct": "schema", "binary": "schema_binary", "ctpa": "schema_ctpa"}
 OPTIONS = {"temperature": 0, "seed": 42, "num_ctx": 8192}
 THINKING_NUM_CTX = 16384  # @think variants only: gemma4:26b reasons for 4-8k tokens per report. 32k put the whole model on the CPU. gpt-oss stays at 8192.
 MAX_RETRIES = 3
@@ -226,7 +226,7 @@ def build_row(report_id: str, model: str, run: int, report_text: str, raw: dict,
 
 def main():
     parser = argparse.ArgumentParser(description="Benchmark Ollama models on structured extraction from chest CT reports.")
-    parser.add_argument("--input", type=Path, default=Path("reports.csv"), help="CSV with report_id, report_text")
+    parser.add_argument("--input", type=Path, default=None, help="CSV with report_id, report_text (default: the schema's reports file)")
     parser.add_argument("--output", type=Path, default=Path("results.csv"))
     parser.add_argument("--models", nargs="+", required=True, help="Ollama model tags, e.g. gpt-oss:20b gemma4:26b")
     parser.add_argument("--schema", choices=SCHEMAS, default="chest_ct")
@@ -246,12 +246,13 @@ def main():
         )
 
     schema = importlib.import_module(SCHEMAS[args.schema])
-    reports = pd.read_csv(args.input, dtype=str, keep_default_na=False)
+    input_path = args.input or Path(schema.REPORTS_FILE)
+    reports = pd.read_csv(input_path, dtype=str, keep_default_na=False)
     if args.ids is not None:
         wanted = pd.read_csv(args.ids, dtype=str, keep_default_na=False)["report_id"]
         reports = reports[reports["report_id"].isin(wanted)]
         if reports.empty:
-            sys.exit(f"ERROR: none of the report_ids in {args.ids} are in {args.input}")
+            sys.exit(f"ERROR: none of the report_ids in {args.ids} are in {input_path}")
     if args.limit is not None:
         reports = reports.head(args.limit)
 
