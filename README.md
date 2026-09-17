@@ -38,7 +38,15 @@ To benchmark gemma with thinking on as well (gpt-oss and the earlier gemma run a
 uv run benchmark.py --schema binary --models gemma4:26b@think --force
 ```
 
-`--force` redoes any `@think` raw files produced by an earlier version at 8k context. Watch `ollama ps` again: the 32k context costs KV-cache memory; if gemma shows a large CPU share, set `THINKING_NUM_CTX` to 16384 in `extract.py`. If reports take minutes or show `attempts` above 1, ask the raw files why:
+`--force` redoes any `@think` raw files produced by an earlier version. The thinking context costs KV-cache memory, and the 26B's 19 GB of weights already exceed the card, so before the first thinking run set these once (PowerShell), then quit Ollama from the tray icon and start it again:
+
+```powershell
+[Environment]::SetEnvironmentVariable('OLLAMA_NUM_PARALLEL', '1', 'User')
+[Environment]::SetEnvironmentVariable('OLLAMA_FLASH_ATTENTION', '1', 'User')
+[Environment]::SetEnvironmentVariable('OLLAMA_KV_CACHE_TYPE', 'q8_0', 'User')
+```
+
+One slot instead of several (the cache is allocated per slot) and an 8-bit cache instead of 16-bit. During the first report run `ollama ps` in a second window: the PROCESSOR column should be mostly GPU. If it is still largely CPU, the fallback experiment is `gemma4:12b@think` (7.6 GB dense, fits entirely). If reports take minutes or show `attempts` above 1, ask the raw files why:
 
 ```powershell
 uv run inspect_raw.py --model gemma4:26b@think
@@ -98,7 +106,7 @@ Resume: a call is skipped when `raw/{schema}/{model}_{report_id}_{run}.json` alr
 
 ### 16 GB VRAM notes
 
-- `num_ctx` is 8192 in `OPTIONS` in `extract.py` for every model except `@think` variants, which get `THINKING_NUM_CTX` = 32768 (gemma4:26b reasons for about 7,500 tokens per report, which fills 8k before any JSON; 16k and 32k were verified to load on the laptop). gpt-oss stays at 8192 and cannot get the thinking suffix. Reports are about 400 tokens, the output about 1,500 tokens, and gpt-oss thinking adds 1,000 to 3,000, so 8192 is enough for everything else.
+- `num_ctx` is 8192 in `OPTIONS` in `extract.py` for every model except `@think` variants, which get `THINKING_NUM_CTX` = 16384 (gemma4:26b reasons for 4,000 to 8,000 tokens per report, which fills 8k before any JSON). 32k loaded but `ollama ps` showed `100% CPU`: the cache alone exceeded the card. Ollama-side settings that halve the cache again are in the checklist. gpt-oss stays at 8192 and cannot get the thinking suffix. Reports are about 400 tokens, the output about 1,500 tokens, and gpt-oss thinking adds 1,000 to 3,000, so 8192 is enough for everything else.
 - After the first call, run `ollama ps` in another terminal. The model must show `100% GPU`. Any CPU share means it spilled and will run many times slower.
 - `gemma4:26b` once showed a CPU share in `ollama ps` on this machine. It is a MoE with only a few billion active parameters, so a partial CPU share can still be fast; if a report takes minutes, switch to `gemma4:12b`.
 - gpt-oss is hardcoded to `think="medium"`. Never run it at high on this machine: it overflows memory and never finishes. There is deliberately no CLI flag for thinking.

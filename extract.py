@@ -20,7 +20,7 @@ from pydantic import ValidationError
 
 SCHEMAS = {"chest_ct": "schema", "binary": "schema_binary"}
 OPTIONS = {"temperature": 0, "seed": 42, "num_ctx": 8192}
-THINKING_NUM_CTX = 32768  # @think variants only: gemma4:26b reasons for ~7.5k tokens per report. gpt-oss stays at 8192.
+THINKING_NUM_CTX = 16384  # @think variants only: gemma4:26b reasons for 4-8k tokens per report. 32k put the whole model on the CPU. gpt-oss stays at 8192.
 MAX_RETRIES = 3
 
 # Model families run WITHOUT constrained format (the JSON schema goes into the prompt instead).
