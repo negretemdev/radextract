@@ -123,7 +123,7 @@ Resume: a call is skipped when `raw/{schema}/{model}_{report_id}_{run}.json` alr
 `thinking_for()` in `extract.py`:
 
 - tags starting with `gpt-oss` → `think="medium"`
-- tags matching `gemma4` / `gemma-4` → `think=False`; with the `@think` suffix (`gemma4:26b@think`) → `think=True`
+- tags matching `gemma4` / `gemma-4` or `qwen3` (qwen3.5, qwen3.8) → `think=False`; with the `@think` suffix (`gemma4:26b@think`) → `think=True`
 - anything else → `think=None` (Ollama's default for that model); `@think` → `think=True`
 
 The `@think` suffix is the only way to change thinking and it is part of the model label: `gemma4:26b` and `gemma4:26b@think` are treated as two different models in `results.csv`, `raw/` and `compare.py`, so both can be benchmarked in one run. The suffix is stripped before the tag is sent to Ollama. `gpt-oss:20b@think` is refused: gpt-oss stays at medium, full stop.

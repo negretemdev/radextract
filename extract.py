@@ -50,8 +50,8 @@ def thinking_for(model: str):
     name = tag.lower()
     if name.startswith("gpt-oss"):
         return "medium"
-    if re.search(r"gemma[-_]?4", name):
-        return think_requested
+    if re.search(r"gemma[-_]?4|qwen3", name):
+        return think_requested  # thinking off unless @think; Ollama would otherwise enable qwen3 thinking by default
     return True if think_requested else None
 
 
