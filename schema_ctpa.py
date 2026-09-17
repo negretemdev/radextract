@@ -1,9 +1,8 @@
-"""CTPA schema: every finding is a JSON boolean or null, plus a verbatim quote.
+"""CTPA schema: every finding is two booleans plus a verbatim quote.
 
-present: true  = explicitly described in the report body
-         false = explicitly negated
-         null  = not mentioned
-The pe_* fields describe the embolism and must be null unless pulmonary_embolism is true.
+mentioned: true when the report addresses the finding at all (describes it or negates it), false when silent.
+present:   true when the finding is described as present, false otherwise (negated or not mentioned).
+The pe_* fields describe the embolism and are all false when pulmonary_embolism is not present.
 To add a finding, add one line to ReportExtraction (name: Finding).
 """
 
@@ -15,17 +14,16 @@ from schema import blank_to_none
 
 
 class Finding(BaseModel):
-    present: bool | None
+    mentioned: bool
+    present: bool
     evidence: str | None = Field(max_length=200)
 
     _blank_evidence = field_validator("evidence", mode="before")(blank_to_none)
 
     @model_validator(mode="after")
-    def evidence_matches_present(self):
-        if self.present is None and self.evidence is not None:
-            raise ValueError("evidence must be null when present is null (not mentioned)")
-        if self.present is not None and self.evidence is None:
-            raise ValueError("evidence (a verbatim quote from the report) is required when present is true or false")
+    def present_needs_quote(self):
+        if self.present and self.evidence is None:
+            raise ValueError("evidence (a verbatim quote from the report) is required when present is true")
         return self
 
 
@@ -66,41 +64,34 @@ class ReportExtraction(BaseModel):
     cardiomegaly: Finding
     lymphadenopathy: Finding
 
-    @model_validator(mode="after")
-    def embolism_subfields_need_embolism(self):
-        if self.pulmonary_embolism.present is not True:
-            filled = [name for name in PE_SUBFIELDS if getattr(self, name).present is not None]
-            if filled:
-                raise ValueError(f"{', '.join(filled)}: the pe_ fields must be null (present null, evidence null) unless pulmonary_embolism is true")
-        return self
-
 
 FINDING_NAMES = [name for name, field in ReportExtraction.model_fields.items() if field.annotation is Finding]
-FLAT_COLUMNS = [f"{name}_{suffix}" for name in FINDING_NAMES for suffix in ("present", "evidence")]
-SCORED_FIELDS = [f"{name}_present" for name in FINDING_NAMES]
+FLAT_COLUMNS = [f"{name}_{suffix}" for name in FINDING_NAMES for suffix in ("mentioned", "present", "evidence")]
+SCORED_FIELDS = [f"{name}_present" for name in FINDING_NAMES]      # agreement and review are judged on these
+SECONDARY_FIELDS = [f"{name}_mentioned" for name in FINDING_NAMES]  # scored separately, never a review trigger
 NUMERIC_FIELDS = set()
 REPORTS_FILE = "reports_ctpa.csv"
 GROUND_TRUTH_FILE = "ground_truth_ctpa.csv"
+RAW_DIR_NAME = "ctpa_v2"
 
 EXTRACTION_PROMPT = """You extract findings from one CT pulmonary angiogram (CTPA) report. Reply with JSON only.
 
-Every field has "present":
-- true: the finding is explicitly described in the report body (FINDINGS, IMPRESSION or the narrative).
-- false: the report explicitly negates it ("no", "without", "not identified", "negative for", "resolved", "normal", "unremarkable").
-- null: the report says nothing about it.
+Every field has two booleans:
+- "mentioned": true when the report addresses the finding at all, either describing it or explicitly negating it ("no", "without", "not identified", "negative for", "resolved", "normal", "unremarkable"); false when the report says nothing about it.
+- "present": true only when the finding is explicitly described as present in the report body (FINDINGS, IMPRESSION or the narrative); false when it is negated or not mentioned.
 
 Rules:
 - Text in INDICATION, HISTORY or COMPARISON never counts. The three study-quality fields may be taken from TECHNIQUE; nothing else may.
 - Never infer. A described finding with a hedged interpretation ("likely", "may represent", "favored", "suspicious for") is true. "Cannot be excluded" or "not excluded" alone is never true. A measurement alone is not a finding.
 - "Stable", "unchanged", "decreased", "residual" findings are true; "resolved" is false.
-- A whole structure described as normal or clear negates its findings: "the lungs are clear" makes consolidation, ground_glass_opacity, atelectasis, pulmonary_nodule, emphysema, mosaic_attenuation and pulmonary_infarct false.
-- pulmonary_embolism is true for any acute or chronic embolus, thrombus or filling defect in a pulmonary artery. "No acute pulmonary embolism" together with chronic thrombus means pulmonary_embolism true, pe_acute false, pe_chronic true.
-- pe_acute is true only when the report itself calls the embolism acute, false when it says there is no acute embolism, otherwise null. pe_chronic likewise needs the word chronic (or chronic-appearing). Words such as new, residual, resolving or single do not decide acute or chronic.
-- All pe_ fields must be null (present null, evidence null) unless pulmonary_embolism is true. When it is true: pe_saddle, pe_main, pe_lobar (interlobar counts as lobar), pe_segmental and pe_subsegmental are the arterial levels, true for each level described and false for a level explicitly negated; a segmental artery of a lobe ("right lower lobe segmental artery") is segmental, not lobar, and pe_lobar needs the lobar or interlobar artery itself; pe_right and pe_left are the sides involved ("bilateral" makes both true), false only when the report explicitly says that side is clear or free of thrombus; pe_multiple is true when more than one embolus, filling defect or vessel is involved and false for a single one; a clot described as occlusive makes pe_occlusive true and pe_nonocclusive false, a clot described as nonocclusive the reverse, and both are true when both are described.
-- suboptimal_study is true when the report calls the study limited, suboptimal, degraded or nondiagnostic for pulmonary embolism, false when the opacification is called adequate, good or excellent and no artifact is said to limit evaluation; an artifact described as mild or as not limiting evaluation does not make the study suboptimal. motion_artifact is true when any motion artifact is mentioned and false when the report says there is none. poor_contrast_opacification is true when opacification is called poor, suboptimal or inadequate and false when it is called adequate, good or excellent.
-- right_heart_strain is true when the report describes right ventricular dilation or enlargement, an RV/LV ratio above 1, septal flattening or bowing, contrast reflux into the IVC, or calls it right heart strain; false when it states no strain or a normal right ventricle. pulmonary_artery_enlargement: the pulmonary artery described as enlarged or dilated. perfusion_defect: a perfusion or iodine-map defect. pulmonary_infarct: an infarct described. lymphadenopathy covers mediastinal, hilar or axillary nodes.
+- A whole structure described as normal or clear negates its findings: "the lungs are clear" makes consolidation, ground_glass_opacity, atelectasis, pulmonary_nodule, emphysema, mosaic_attenuation and pulmonary_infarct mentioned but not present.
+- pulmonary_embolism is true for any acute or chronic embolus, thrombus or filling defect in a pulmonary artery. "No acute pulmonary embolism" together with chronic thrombus means pulmonary_embolism present, pe_acute mentioned but not present, pe_chronic present.
+- pe_acute is present only when the report itself calls the embolism acute; mentioned when it says acute or no acute. pe_chronic likewise needs the word chronic (or chronic-appearing). Words such as new, residual, resolving or single do not decide acute or chronic.
+- All pe_ fields are mentioned false, present false, evidence null unless pulmonary_embolism is present. When it is: pe_saddle, pe_main, pe_lobar (interlobar counts as lobar), pe_segmental and pe_subsegmental are the arterial levels, present for each level described, mentioned but not present for a level explicitly negated; a segmental artery of a lobe ("right lower lobe segmental artery") is segmental, not lobar, and pe_lobar needs the lobar or interlobar artery itself; pe_right and pe_left are the sides involved ("bilateral" makes both true), mentioned but not present only when the report explicitly says that side is clear or free of thrombus; pe_multiple is true when more than one embolus, filling defect or vessel is involved and false for a single one; a clot described as occlusive makes pe_occlusive true and pe_nonocclusive false, a clot described as nonocclusive the reverse, and both are true when both are described.
+- suboptimal_study is present when the report calls the study limited, suboptimal, degraded or nondiagnostic for pulmonary embolism, mentioned but not present when the opacification is called adequate, good or excellent and no artifact is said to limit evaluation; an artifact described as mild or as not limiting evaluation does not make the study suboptimal. motion_artifact is present when any motion artifact is described. poor_contrast_opacification is present when opacification is called poor, suboptimal or inadequate, and mentioned but not present when it is called adequate, good or excellent.
+- right_heart_strain is present when the report describes right ventricular dilation or enlargement, an RV/LV ratio above 1, septal flattening or bowing, contrast reflux into the IVC, or calls it right heart strain; mentioned but not present when it states no strain or a normal right ventricle. pulmonary_artery_enlargement: the pulmonary artery described as enlarged or dilated. perfusion_defect: a perfusion or iodine-map defect. pulmonary_infarct: an infarct described. lymphadenopathy covers mediastinal, hilar or axillary nodes.
 
-"evidence": one contiguous span copied exactly from the report (max 200 characters, no "..." and no paraphrase) supporting the value. Required when present is true or false; null when present is null."""
+"evidence": one contiguous span copied exactly from the report (max 200 characters, no "..." and no paraphrase). Required when present is true (the phrase describing the finding); when mentioned but not present, the negating phrase; null when not mentioned."""
 
 
 def build_messages(report_text: str, include_schema: bool) -> list[dict]:
@@ -117,19 +108,21 @@ def flatten(extraction: ReportExtraction) -> dict:
     row = {}
     for name in FINDING_NAMES:
         finding = getattr(extraction, name)
+        row[f"{name}_mentioned"] = finding.mentioned
         row[f"{name}_present"] = finding.present
         row[f"{name}_evidence"] = finding.evidence
     return row
 
 
 def normalize(data: dict) -> tuple[dict, dict]:
-    """Repair what constrained decoding cannot enforce, so that only a true finding without a quote triggers a retry.
+    """Repair what constrained decoding cannot enforce, so that only a present finding without a quote triggers a retry.
 
-    false without a quote becomes null (a negation must be quoted), a quote on a null finding is dropped,
-    pe_ fields are cleared when there is no embolism, and quotes longer than 200 characters are cut (a prefix of a
-    verbatim quote is still verbatim). Returns the repaired data and the counts of repairs made.
+    present implies mentioned; a negation without a quote is treated as not mentioned; a quote on an unmentioned
+    finding is dropped; pe_ fields are cleared when there is no embolism; quotes over 200 characters are cut
+    (a prefix of a verbatim quote is still verbatim). Returns the repaired data and the counts of repairs made.
     """
-    counts = {"false_without_quote_to_null": 0, "quote_dropped_for_null": 0, "pe_fields_cleared": 0, "quote_truncated": 0}
+    counts = {"present_made_mentioned": 0, "negation_without_quote_unmentioned": 0, "quote_dropped_for_unmentioned": 0,
+              "pe_fields_cleared": 0, "quote_truncated": 0}
     if not isinstance(data, dict):
         return data, {}
     for name in FINDING_NAMES:
@@ -143,18 +136,22 @@ def normalize(data: dict) -> tuple[dict, dict]:
         if isinstance(evidence, str) and len(evidence) > 200:
             finding["evidence"] = evidence[:200]
             counts["quote_truncated"] += 1
-        if finding.get("present") is False and evidence is None:
-            finding["present"] = None
-            counts["false_without_quote_to_null"] += 1
-        elif finding.get("present") is None and evidence is not None:
+        if finding.get("present") is True and finding.get("mentioned") is not True:
+            finding["mentioned"] = True
+            counts["present_made_mentioned"] += 1
+        if finding.get("mentioned") is True and finding.get("present") is not True and evidence is None:
+            finding["mentioned"] = False
+            counts["negation_without_quote_unmentioned"] += 1
+        if finding.get("mentioned") is False and finding.get("present") is not True and evidence is not None:
             finding["evidence"] = None
-            counts["quote_dropped_for_null"] += 1
+            counts["quote_dropped_for_unmentioned"] += 1
     embolism = data.get("pulmonary_embolism")
     if not (isinstance(embolism, dict) and embolism.get("present") is True):
         for name in PE_SUBFIELDS:
             finding = data.get(name)
-            if isinstance(finding, dict) and (finding.get("present") is not None or finding.get("evidence") is not None):
-                finding["present"] = None
+            if isinstance(finding, dict) and (finding.get("mentioned") or finding.get("present") or finding.get("evidence") is not None):
+                finding["mentioned"] = False
+                finding["present"] = False
                 finding["evidence"] = None
                 counts["pe_fields_cleared"] += 1
     return data, {key: value for key, value in counts.items() if value}

@@ -304,7 +304,7 @@ def main():
         except Exception as error:
             sys.exit(f"ERROR: cannot reach Ollama at {args.host}: {error}")
 
-    raw_dir = Path("raw") / args.schema
+    raw_dir = Path("raw") / getattr(schema, "RAW_DIR_NAME", args.schema)
     raw_dir.mkdir(parents=True, exist_ok=True)
     rows = []
     for model in args.models:

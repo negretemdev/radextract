@@ -42,6 +42,8 @@ def main():
     if args.ground_truth is not None:
         truth = pd.read_csv(args.ground_truth, dtype={"report_id": str}).set_index("report_id")
 
+    secondary_fields = getattr(schema, "SECONDARY_FIELDS", [])
+    secondary_total = 0
     disputed_rows = []
     disputes_per_field = {field: 0 for field in fields}
     false_vs_null_total = 0
@@ -79,6 +81,10 @@ def main():
                     first_right += 1
                 else:
                     second_right += 1
+        for field in secondary_fields:
+            if not values_match(field, first.at[report_id, field], second.at[report_id, field]):
+                secondary_total += 1
+                false_vs_null_fields.append(field)
         if disputed_fields or false_vs_null_fields:
             disputed_rows.append({
                 "report_id": report_id,
@@ -98,6 +104,8 @@ def main():
     print(f"reports with a presence disagreement (to review): {reports_to_review}/{len(report_ids)}")
     print(f"disputed fields (one model asserts the finding, the other does not): {total_disputed}/{total_fields} ({total_disputed / total_fields:.1%})")
     print(f"false-versus-null differences (negated versus not mentioned, not disputes): {false_vs_null_total}")
+    if secondary_fields:
+        print(f"'mentioned' disagreements (not disputes): {secondary_total}")
     if reports_to_review:
         print("disputed fields per report:", disputed.loc[disputed["n_disputed"] > 0, "n_disputed"].value_counts().sort_index().to_dict())
     agreement = pd.Series({field: 1 - count / len(report_ids) for field, count in disputes_per_field.items()}, name="agreement")

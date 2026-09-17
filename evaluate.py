@@ -99,6 +99,9 @@ def main():
             summary.setdefault(f"accuracy_{field}", {})[model] = model_correct[field].mean()
         for field in fields:
             summary.setdefault(f"presence_{field}", {})[model] = presence_correct.loc[rows.index, field].mean()
+        for field in getattr(schema, "SECONDARY_FIELDS", []):
+            matches = [values_match(field, results.at[index, field], truth.at[results.at[index, "report_id"], field]) and results.at[index, "valid_json"] == 1 for index in rows.index]
+            summary.setdefault(f"secondary_{field}", {})[model] = pd.Series(matches).mean()
 
     agreement = {}
     if len(models) > 1:
@@ -110,6 +113,9 @@ def main():
             pivot = first_run.pivot(index="report_id", columns="model", values=field)
             agreement[field] = (pivot.astype(str).nunique(axis=1, dropna=False) == 1).mean()
 
+    secondary = [key for key in summary if key.startswith("secondary_")]
+    if secondary:
+        summary["secondary_accuracy_overall"] = {model: pd.Series([summary[key][model] for key in secondary]).mean() for model in models}
     summary_rows = []
     for metric, per_model in summary.items():
         row = {"metric": metric, **per_model}

@@ -12,8 +12,8 @@ report text rather than trusting the model.
 | `schema.py` | Schema `chest_ct`: Pydantic models (`Observation` with a 3-state status, `LargestNodule`, `FollowUp`, `ReportExtraction`) and the extraction prompt. Adding a finding is one line in `ReportExtraction`; the scripts discover the fields at runtime. |
 | `schema_binary.py` | Schema `binary`: the same 20 findings plus `follow_up_recommended`, each a `BinaryObservation` (`present: bool` + quote). false covers both negated and not mentioned. |
 | `benchmark.py` | One command: `extract.py`, then `evaluate.py`, then `compare.py`; writes `results_<schema>.csv`, `summary_<schema>.csv`, `disputed_<schema>.csv`. |
-| `schema_ctpa.py` | Schema `ctpa`: 31 CT pulmonary angiogram fields, each `present: true / false / null` (described / negated / not mentioned) plus a quote. |
-| `reports_ctpa.csv`, `ground_truth_ctpa.csv` | 50 synthetic CTPA reports (P001–P050) and their hand-filled reference (63 columns). |
+| `schema_ctpa.py` | Schema `ctpa`: 31 CT pulmonary angiogram fields, each two booleans, `mentioned` and `present`, plus a quote. |
+| `reports_ctpa.csv`, `ground_truth_ctpa.csv` | 50 synthetic CTPA reports (P001–P050) and their hand-filled reference (94 columns). |
 | `extract.py` | Runs models over `reports.csv`, writes `results.csv` (one row per report, model and run) and one raw JSON per call in `raw/{schema}/`. `--schema chest_ct` (default), `--schema binary` or `--schema ctpa`; the input CSV defaults to the schema's reports file. |
 | `inspect_raw.py` | Explains retries and failures from `raw/`: done_reason, thinking length, validation error per attempt. |
 | `evaluate.py` | Scores `results.csv` against the schema's ground truth, writes `summary.csv`. |
@@ -333,7 +333,7 @@ Thinking made the 26B worse on every axis. It fixed 2 of the thinking-off errors
 
 ## CTPA schema (`--schema ctpa`)
 
-Built for cohort filtering of CT pulmonary angiogram reports. Every field is `present: true | false | null` with a verbatim quote: true when the finding is explicitly described, false when explicitly negated, null when the report says nothing. Filtering uses `true`; the false/null split is kept because a negated finding and a silent report are different evidence, and it is scored separately so it never inflates the review list.
+Built for cohort filtering of CT pulmonary angiogram reports. Every field is two booleans with a verbatim quote: `present` is true only when the finding is explicitly described as present, and `mentioned` is true when the report addresses the finding at all, by describing it or by negating it. Filtering uses `present`; `mentioned` separates a negated finding from a silent report, and it is scored on its own so it never inflates the review list. Both are plain booleans because that is what the small models get right.
 
 | Group | Fields |
 |---|---|
@@ -344,13 +344,13 @@ Built for cohort filtering of CT pulmonary angiogram reports. Every field is `pr
 
 Conventions, stated in the prompt and enforced by validators where possible:
 
-- The `pe_*` fields must be null unless `pulmonary_embolism` is true (validator). "No acute pulmonary embolism" with chronic thrombus described means `pulmonary_embolism` true, `pe_acute` false, `pe_chronic` true, which is the case both local models missed on the earlier set. "Acute component cannot be excluded" leaves `pe_acute` null.
-- Levels: `pe_saddle`, `pe_main`, `pe_lobar` (interlobar counts as lobar), `pe_segmental`, `pe_subsegmental`, true for each level described, false for a level explicitly negated. Sides: "bilateral" sets both. `pe_multiple` is true when more than one embolus, filling defect or vessel is involved. A nonocclusive clot makes `pe_nonocclusive` true and `pe_occlusive` false, and the reverse; both true when both are described.
-- `suboptimal_study` is true when the report calls itself limited, suboptimal, degraded or nondiagnostic for embolism, false when opacification is adequate or good without a limiting artifact. A motion artifact that "does not limit evaluation" sets `motion_artifact` true and `suboptimal_study` false. A nondiagnostic study leaves `pulmonary_embolism` null.
+- The `pe_*` fields are all false unless `pulmonary_embolism` is present (repaired in code). "No acute pulmonary embolism" with chronic thrombus described means `pulmonary_embolism` present, `pe_acute` mentioned but not present, `pe_chronic` present, which is the case both local models missed on the earlier set. "Acute component cannot be excluded" leaves `pe_acute` unmentioned.
+- Levels: `pe_saddle`, `pe_main`, `pe_lobar` (interlobar counts as lobar; a lobe's segmental artery is segmental), `pe_segmental`, `pe_subsegmental`, present for each level described, mentioned but not present for a level explicitly negated. Sides: "bilateral" sets both. `pe_multiple` is true when more than one embolus, filling defect or vessel is involved. A nonocclusive clot makes `pe_nonocclusive` true and `pe_occlusive` false, and the reverse; both true when both are described.
+- `suboptimal_study` is true when the report calls itself limited, suboptimal, degraded or nondiagnostic for embolism, false when opacification is adequate or good without a limiting artifact. A motion artifact that "does not limit evaluation" sets `motion_artifact` present and `suboptimal_study` mentioned but not present. A nondiagnostic study leaves `pulmonary_embolism` unmentioned.
 - `right_heart_strain` is true for RV dilation or enlargement, RV/LV above 1, septal flattening or bowing, IVC reflux, or the words "right heart strain". `pulmonary_artery_enlargement` needs the words enlarged or dilated; a measurement alone does not count. "The lungs are clear" negates the seven parenchymal findings. Septic emboli are nodules, not pulmonary embolism.
-- A quote is required for true (validator, retried). The other consistency rules are repaired in code before validation rather than retried, because constrained decoding cannot enforce them and small models broke them constantly: false without a quote becomes null, a quote on a null finding is dropped, `pe_*` fields are cleared when there is no embolism, and a quote over 200 characters is cut (a prefix of a verbatim quote is still verbatim). The repairs made are recorded per attempt in the raw file (`repairs`). `--reparse` re-runs parsing, repairs and validation on existing raw files from their stored attempts with no model call, so a run made before a rule change can be re-scored in seconds.
+- A quote is required when `present` is true (validator, retried). The other consistency rules are repaired in code before validation rather than retried, because constrained decoding cannot enforce them and small models broke them constantly: present implies mentioned, a negation without a quote is treated as not mentioned, a quote on an unmentioned finding is dropped, `pe_*` fields are cleared when there is no embolism, and a quote over 200 characters is cut (a prefix of a verbatim quote is still verbatim). The repairs made are recorded per attempt in the raw file (`repairs`). `--reparse` re-runs parsing, repairs and validation on existing raw files from their stored attempts with no model call, so a run made before a rule change can be re-scored in seconds.
 
-`evaluate.py` reports `accuracy_<field>` (exact: true/false/null) and `presence_<field>` (asserted or not). `compare.py` judges disagreement on presence and lists false-versus-null differences in their own column of `disputed.csv`.
+`evaluate.py` reports `accuracy_<field>` and `presence_<field>` on the `present` columns and `secondary_<field>` on the `mentioned` columns. `compare.py` judges disagreement on `present` and lists `mentioned` disagreements in their own column of `disputed.csv`. Raw files for this schema live in `raw/ctpa_v2/`.
 
 ### Laptop run
 
@@ -358,6 +358,8 @@ Conventions, stated in the prompt and enforced by validators where possible:
 git pull
 uv run benchmark.py --schema ctpa --models gemma4:26b gpt-oss:20b
 ```
+
+The three-state version of this schema (present true/false/null) was replaced by the two-boolean one after the five-model laptop run below; the cloud validation tables above it refer to the three-state version.
 
 `benchmark.py` compares the first two models; with a third model listed, run `compare.py --schema ctpa --results results_ctpa.csv --models <a> <b> --ground-truth ground_truth_ctpa.csv` for the other pairs. Send `results_ctpa.csv` for review.
 
