@@ -422,3 +422,16 @@ Code repairs applied across the 100 calls: `pe_*` fields cleared on 30 negative 
 | Total | 8 min | 22 min | 12 min |
 
 Zero retries where the three-state version had retried on 33 of 50 gemma reports. gemma and gpt-oss disagreed on 19 fields in 13 reports; gpt-oss was right on 16. Eight of gemma's errors are one blind spot, `pe_lobar` left false for "right lower lobe pulmonary artery", which mistral-small shares, so the majority overruled a correct gpt-oss quote six times and `final_ctpa.csv` came out at 99.4%, below gpt-oss alone. Two changes followed: the prompt now names the lobar arteries ("right lower lobe pulmonary artery", "left upper lobe artery", "interlobar artery" are lobar; "segmental branches" are not), and `resolve.py` flags a report for review whenever the losing side of a dispute asserted the finding with a verbatim quote. On this run that flags 10 reports and catches every one of the 6 with a wrong field. For CTPA, list gpt-oss first: it has been the most accurate local model on this schema twice, and the primary's value is what survives an unresolved dispute.
+
+### Cloud validation of the per-artery schema (64 fields)
+
+| Metric | gemma4:31b-cloud | gpt-oss:20b-cloud |
+|---|---|---|
+| Valid JSON | 50/50 | 50/50 (two retries) |
+| `present` accuracy, all 3,200 values | 99.8% | 99.2% |
+| `present` accuracy, the 1,650 artery values | 99.7% | 98.8% |
+| `mentioned` accuracy | 97.2% | 93.1% |
+| Quotes verbatim | 98.3% | 90.1% |
+| Time per report (cloud) | 72 s | 74 s |
+
+The artery fields are where the smaller model slips: gpt-oss called a subsegmental embolus lobar three times, and skipped a named segment the report spelled out four times. The pair disagreed on 28 fields in 14 of 50 reports, gemma right on 24, and 24 of gpt-oss's 25 errors were exposed by the disagreement. More specificity means more disputes to review: expect about a quarter of reports flagged with this schema against a tenth with the summary fields only. Code repairs across the 100 calls: `pe_*` cleared on 32 negative studies, 6 level fields made present by a named artery.
