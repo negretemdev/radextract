@@ -478,3 +478,12 @@ After the pooled error analysis (see the conventions above), the 26 reports with
 | gpt-oss:20b-cloud | 5 | 2 | 1 | 21/26 → 24/26 |
 
 Projected over all 50 (the other 24 reports were right in every run): gemma 45/50 and gpt-oss 48/50 reports with every embolism field right. What remains: gemma calls one thrombus spanning several vessels "multiple" (3 cells, against the stated rule), "bilateral segmental branches" in a sentence that also names the right lower lobe artery passes the guard, one named segment hallucinated under "all lobes", and gpt-oss calling a subsegmental embolus segmental once. An earlier wording of the quote rule ("the quote must contain the words that name that lobe") made gpt-oss drop "both main pulmonary arteries" and "all lobes" values instead of quoting them (11 cells); the rule now says that "both", "bilateral" and "all lobes" name the sides and lobes.
+
+### Reviewed conventions, checked on the same 26 reports
+
+| Model, grouped, cloud | Cells fixed | Newly wrong | Still wrong | Every PE field right |
+|---|---|---|---|---|
+| gemma4:31b-cloud | 1 | 0 | 1 | 25/26 |
+| gpt-oss:20b-cloud | 7 | 0 | 1 | 25/26 |
+
+Projected over all 50: 49 of 50 reports fully right on the embolism fields for each model, 28 of 29 among PE-positive ones. Each model keeps one residual: gemma lights `pe_segmental_right_lower` from "nonocclusive clot in bilat segmental branches" in the one sentence that also names the right lower lobe artery (the sentence-level guard cannot separate them), and gpt-oss misses the right middle lobe in "right middle lobe and right lower lobe segmental arteries".
