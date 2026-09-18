@@ -332,18 +332,23 @@ def main():
         for report_number, report in enumerate(reports.itertuples(index=False), start=1):
             for run in range(1, args.runs + 1):
                 path = raw_file(raw_dir, model, report.report_id, run)
+                raw = None
+                note = ""
                 if path.exists() and not args.force:
-                    raw = json.loads(path.read_text(encoding="utf-8"))
-                    note = "resumed from raw file"
+                    stored = json.loads(path.read_text(encoding="utf-8"))
                     if args.reparse:
-                        raw = reparse(raw, schema)
-                        path.write_text(json.dumps(raw, indent=1), encoding="utf-8")
-                        note = "reparsed from raw file"
-                else:
+                        stored = reparse(stored, schema)
+                        path.write_text(json.dumps(stored, indent=1), encoding="utf-8")
+                    try:
+                        row = build_row(report.report_id, model, run, report.report_text, stored, schema)
+                        raw = stored
+                        note = "reparsed from raw file" if args.reparse else "resumed from raw file"
+                    except ValidationError:
+                        note = "(raw file was from an older schema, re-run)"
+                if raw is None:
                     raw = call_model(client, model, report.report_text, schema)
                     path.write_text(json.dumps(raw, indent=1), encoding="utf-8")
-                    note = ""
-                row = build_row(report.report_id, model, run, report.report_text, raw, schema)
+                    row = build_row(report.report_id, model, run, report.report_text, raw, schema)
                 rows.append(row)
                 print(
                     f"[{model}] {report_number}/{len(reports)} {report.report_id} run {run}: "
