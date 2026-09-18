@@ -127,6 +127,71 @@ NUMERIC_FIELDS = set()
 REPORTS_FILE = "reports_ctpa.csv"
 GROUND_TRUTH_FILE = "ground_truth_ctpa.csv"
 RAW_DIR_NAME = "ctpa_v2"
+KEY_FINDING = "pulmonary_embolism_present"   # evaluate.py reports report-level correctness on the key fields, and among reports where this is present
+KEY_FIELDS = [f"{name}_present" for name in FINDING_NAMES if name == "pulmonary_embolism" or name.startswith("pe_")]
+
+LOBE_WORDS = {"right_upper": "right upper lobe", "right_middle": "right middle lobe", "right_lower": "right lower lobe",
+              "left_upper": "left upper lobe", "left_lower": "left lower lobe", "lingula": "lingula"}
+SEGMENT_WORDS = {"rul": "right upper lobe", "rml": "right middle lobe", "rll": "right lower lobe", "lul": "left upper lobe",
+                 "lingula": "lingula", "lll": "left lower lobe"}
+FIELD_DEFINITIONS = {
+    "suboptimal_study": "the study is called limited, suboptimal, degraded or nondiagnostic for pulmonary embolism",
+    "poor_contrast_opacification": "opacification of the pulmonary arteries is called poor, suboptimal or inadequate",
+    "motion_artifact": "respiratory or motion artifact is described",
+    "pulmonary_embolism": "any acute or chronic embolus, thrombus or filling defect in a pulmonary artery",
+    "pe_acute": "the embolism is called acute by the report",
+    "pe_chronic": "the embolism is called chronic or chronic-appearing (webs, mural or calcified thrombus)",
+    "pe_saddle": "a saddle embolus at the bifurcation of the main pulmonary artery",
+    "pe_main": "embolus in the right or left main pulmonary artery",
+    "pe_lobar": "embolus in a lobar artery: an upper, middle or lower lobe pulmonary artery, or an interlobar artery",
+    "pe_segmental": "embolus in a segmental artery or segmental branch",
+    "pe_subsegmental": "embolus in a subsegmental artery or branch",
+    "pe_right": "embolus in a right-sided pulmonary artery",
+    "pe_left": "embolus in a left-sided pulmonary artery",
+    "pe_multiple": "more than one embolus, filling defect or vessel involved (false for a single embolus)",
+    "pe_occlusive": "clot described as occlusive",
+    "pe_nonocclusive": "clot described as nonocclusive",
+    "right_heart_strain": "right ventricular dilation or enlargement, RV/LV ratio above 1, septal flattening or bowing, contrast reflux into the IVC, or the words right heart strain",
+    "pulmonary_artery_enlargement": "the pulmonary artery described as enlarged or dilated (a measurement alone does not count)",
+    "perfusion_defect": "a perfusion or iodine-map defect",
+    "pulmonary_infarct": "a pulmonary infarct described, including a hedged one (infarct versus pneumonia)",
+    "consolidation": "consolidation in the lung",
+    "ground_glass_opacity": "ground-glass opacity in the lung",
+    "atelectasis": "atelectasis",
+    "pulmonary_nodule": "a pulmonary nodule, including cavitary or septic nodules",
+    "emphysema": "emphysema",
+    "mosaic_attenuation": "mosaic attenuation of the lung parenchyma",
+    "pleural_effusion": "pleural effusion or pleural fluid",
+    "pneumothorax": "pneumothorax",
+    "pericardial_effusion": "pericardial effusion or pericardial fluid",
+    "cardiomegaly": "the heart or a chamber described as enlarged",
+    "lymphadenopathy": "enlarged mediastinal, hilar or axillary lymph nodes",
+    "pe_main_right": "embolus in the right main pulmonary artery",
+    "pe_main_left": "embolus in the left main pulmonary artery",
+    "pe_lobar_interlobar_right": "embolus in the right interlobar pulmonary artery",
+    "pe_lobar_interlobar_left": "embolus in the left interlobar pulmonary artery",
+}
+for key, words in LOBE_WORDS.items():
+    if key != "lingula":
+        FIELD_DEFINITIONS[f"pe_lobar_{key}"] = f"embolus in the {words} pulmonary artery itself (the lobar artery, not its segmental branches)"
+    FIELD_DEFINITIONS[f"pe_segmental_{key}"] = f"embolus in a segmental artery or segmental branch of the {words} (the lobe must be named by the report)"
+for name in FINDING_NAMES:
+    if name.startswith("pe_segment_"):
+        lobe, segment = name[len("pe_segment_"):].split("_", 1)
+        FIELD_DEFINITIONS[name] = f"embolus in the {segment.replace('_', ' ')} segmental artery of the {SEGMENT_WORDS[lobe]} (the segment must be named by the report)"
+assert set(FIELD_DEFINITIONS) == set(FINDING_NAMES), set(FINDING_NAMES) ^ set(FIELD_DEFINITIONS)
+
+
+def question_messages(report_text: str, field: str, include_schema: bool) -> list[dict]:
+    """Chat messages asking about one field only; the answer is a single Finding object."""
+    system_prompt = (EXTRACTION_PROMPT + f"\n\nAnswer for exactly one field, {field}: {FIELD_DEFINITIONS[field]}. "
+                     "Return one JSON object with the keys mentioned, present and evidence for this field only.")
+    if include_schema:
+        system_prompt += "\n\nThe JSON object must match this JSON schema exactly:\n" + json.dumps(Finding.model_json_schema())
+    return [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": "Extract this one finding from this report:\n\n" + report_text},
+    ]
 
 EXTRACTION_PROMPT = """You extract findings from one CT pulmonary angiogram (CTPA) report. Reply with JSON only.
 
@@ -170,6 +235,34 @@ def flatten(extraction: ReportExtraction) -> dict:
     return row
 
 
+def repair_finding(finding: dict, counts: dict) -> None:
+    """The per-finding repairs: blank quote to null, long quote cut, present implies mentioned, unquoted negation unmentioned."""
+    evidence = finding.get("evidence")
+    if isinstance(evidence, str) and evidence.strip() == "":
+        evidence = None
+        finding["evidence"] = None
+    if isinstance(evidence, str) and len(evidence) > 200:
+        finding["evidence"] = evidence[:200]
+        counts["quote_truncated"] = counts.get("quote_truncated", 0) + 1
+    if finding.get("present") is True and finding.get("mentioned") is not True:
+        finding["mentioned"] = True
+        counts["present_made_mentioned"] = counts.get("present_made_mentioned", 0) + 1
+    if finding.get("mentioned") is True and finding.get("present") is not True and evidence is None:
+        finding["mentioned"] = False
+        counts["negation_without_quote_unmentioned"] = counts.get("negation_without_quote_unmentioned", 0) + 1
+    if finding.get("mentioned") is False and finding.get("present") is not True and evidence is not None:
+        finding["evidence"] = None
+        counts["quote_dropped_for_unmentioned"] = counts.get("quote_dropped_for_unmentioned", 0) + 1
+
+
+def normalize_finding(data: dict) -> tuple[dict, dict]:
+    """Repairs for a single-field answer (question mode)."""
+    counts = {}
+    if isinstance(data, dict):
+        repair_finding(data, counts)
+    return data, counts
+
+
 def normalize(data: dict) -> tuple[dict, dict]:
     """Repair what constrained decoding cannot enforce, so that only a present finding without a quote triggers a retry.
 
@@ -183,24 +276,8 @@ def normalize(data: dict) -> tuple[dict, dict]:
         return data, {}
     for name in FINDING_NAMES:
         finding = data.get(name)
-        if not isinstance(finding, dict):
-            continue
-        evidence = finding.get("evidence")
-        if isinstance(evidence, str) and evidence.strip() == "":
-            evidence = None
-            finding["evidence"] = None
-        if isinstance(evidence, str) and len(evidence) > 200:
-            finding["evidence"] = evidence[:200]
-            counts["quote_truncated"] += 1
-        if finding.get("present") is True and finding.get("mentioned") is not True:
-            finding["mentioned"] = True
-            counts["present_made_mentioned"] += 1
-        if finding.get("mentioned") is True and finding.get("present") is not True and evidence is None:
-            finding["mentioned"] = False
-            counts["negation_without_quote_unmentioned"] += 1
-        if finding.get("mentioned") is False and finding.get("present") is not True and evidence is not None:
-            finding["evidence"] = None
-            counts["quote_dropped_for_unmentioned"] += 1
+        if isinstance(finding, dict):
+            repair_finding(finding, counts)
     counts["level_made_present"] = 0
     for artery, implied_names in ARTERY_IMPLIES.items():
         finding = data.get(artery)

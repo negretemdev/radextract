@@ -95,6 +95,16 @@ def main():
             summary.setdefault("identical_runs_rate_with_evidence", {})[model] = pd.Series(identical_with_evidence).mean()
         summary.setdefault("accuracy_overall", {})[model] = model_correct[fields].to_numpy().mean()
         summary.setdefault("presence_accuracy_overall", {})[model] = presence_correct.loc[rows.index, fields].to_numpy().mean()
+        key_fields = getattr(schema, "KEY_FIELDS", None)
+        if key_fields:
+            key_correct = presence_correct.loc[rows.index, key_fields]
+            summary.setdefault("key_fields_presence_accuracy", {})[model] = key_correct.to_numpy().mean()
+            summary.setdefault("reports_all_key_fields_correct", {})[model] = key_correct.all(axis=1).mean()
+            key_finding = getattr(schema, "KEY_FINDING", None)
+            if key_finding:
+                positive = [index for index in rows.index if is_present(truth.at[results.at[index, "report_id"], key_finding])]
+                if positive:
+                    summary.setdefault("positive_reports_all_key_fields_correct", {})[model] = key_correct.loc[positive].all(axis=1).mean()
         for field in fields:
             summary.setdefault(f"accuracy_{field}", {})[model] = model_correct[field].mean()
         for field in fields:

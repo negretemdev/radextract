@@ -98,14 +98,19 @@ def compact_validation_error(error) -> str:
     return "\n".join(lines)
 
 
-def parse_and_validate(schema, content: str):
+def parse_and_validate(schema, content: str, field: str = None):
     """Parse the model output, apply the schema's repairs when it defines normalize(), validate.
-    Returns (extraction, repairs); raises ValueError for invalid JSON and ValidationError for schema violations."""
+    Returns (extraction, repairs); raises ValueError for invalid JSON and ValidationError for schema violations.
+    In question mode (field given) the answer is one Finding and only the per-finding repairs apply."""
     try:
         data = json.loads(strip_code_fences(content))
     except json.JSONDecodeError as error:
         raise ValueError(f"invalid JSON: {error}")
     repairs = {}
+    if field is not None:
+        if hasattr(schema, "normalize_finding"):
+            data, repairs = schema.normalize_finding(data)
+        return schema.Finding.model_validate(data), repairs
     if hasattr(schema, "normalize"):
         data, repairs = schema.normalize(data)
     return schema.ReportExtraction.model_validate(data), repairs
@@ -118,7 +123,7 @@ def reparse(raw: dict, schema) -> dict:
     raw["extraction"] = None
     for attempt in raw["attempts"]:
         try:
-            extraction, repairs = parse_and_validate(schema, attempt["content"])
+            extraction, repairs = parse_and_validate(schema, attempt["content"], raw.get("field"))
         except (ValidationError, ValueError) as error:
             attempt["validation_error"] = compact_validation_error(error)
             continue
@@ -148,14 +153,19 @@ def chat_with_transient_retries(client: Client, tag: str, messages, response_for
         time.sleep(TRANSIENT_PAUSE_S)
 
 
-def call_model(client: Client, model: str, report_text: str, schema) -> dict:
-    """Call the model, validate, retry on validation errors, and return everything worth saving."""
+def call_model(client: Client, model: str, report_text: str, schema, field: str = None) -> dict:
+    """Call the model, validate, retry on validation errors, and return everything worth saving.
+    With a field name only that one finding is asked (question mode) and the answer is a single Finding."""
     tag, _ = split_model_tag(model)
     think = thinking_for(model)
     options = options_for(model)
     constrained = uses_constrained_format(model)
-    response_format = schema.ReportExtraction.model_json_schema() if constrained else None
-    messages = schema.build_messages(report_text, include_schema=not constrained)
+    if field is None:
+        response_format = schema.ReportExtraction.model_json_schema() if constrained else None
+        messages = schema.build_messages(report_text, include_schema=not constrained)
+    else:
+        response_format = schema.Finding.model_json_schema() if constrained else None
+        messages = schema.question_messages(report_text, field, include_schema=not constrained)
     attempts = []
     extraction = None
     started = time.perf_counter()
@@ -184,7 +194,7 @@ def call_model(client: Client, model: str, report_text: str, schema) -> dict:
             ]
             continue
         try:
-            extraction, record["repairs"] = parse_and_validate(schema, content)
+            extraction, record["repairs"] = parse_and_validate(schema, content, field)
             attempts.append(record)
             break
         except (ValidationError, ValueError) as error:
@@ -198,6 +208,7 @@ def call_model(client: Client, model: str, report_text: str, schema) -> dict:
     return {
         "schema": schema.__name__,
         "model": model,
+        "field": field,
         "think": think,
         "constrained_format": constrained,
         "options": options,
@@ -278,6 +289,62 @@ def build_row(report_id: str, model: str, run: int, report_text: str, raw: dict,
     return row
 
 
+def build_question_row(report_id: str, model: str, run: int, report_text: str, raws: dict, schema) -> dict:
+    """One row from several single-field answers (question mode); fields that were not asked stay empty."""
+    row = {
+        "report_id": report_id,
+        "model": model,
+        "run": run,
+        "valid_json": int(all(raw["valid_json"] for raw in raws.values())),
+        "attempts": sum(len(raw["attempts"]) for raw in raws.values()),
+        "latency_s": round(sum(raw["latency_s"] for raw in raws.values()), 2),
+    }
+    normalized_report, offsets = normalize_with_offsets(report_text)
+    for field, raw in raws.items():
+        if not raw["valid_json"]:
+            continue
+        finding = schema.Finding.model_validate(raw["extraction"])
+        for key, value in finding.model_dump().items():
+            row[f"{field}_{key}"] = value
+        evidence_ok, section = check_evidence(finding.evidence, report_text, normalized_report, offsets)
+        row[f"{field}_evidence_ok"] = evidence_ok
+        row[f"{field}_section"] = section
+    return row
+
+
+def run_questions(client: Client, model: str, reports, questions: dict, raw_dir: Path, schema, args) -> list[dict]:
+    """Question mode: for each report, ask only the listed fields, one call each, and build one row per report."""
+    safe_model = re.sub(r"[^A-Za-z0-9.-]+", "_", model)
+    rows = []
+    for report_number, report in enumerate(reports.itertuples(index=False), start=1):
+        for run in range(1, args.runs + 1):
+            raws = {}
+            fresh = 0
+            for field in questions[report.report_id]:
+                path = raw_dir / f"{safe_model}_{report.report_id}_{run}_q_{field}.json"
+                raw = None
+                if path.exists() and not args.force:
+                    stored = json.loads(path.read_text(encoding="utf-8"))
+                    if args.reparse:
+                        stored = reparse(stored, schema)
+                        path.write_text(json.dumps(stored, indent=1), encoding="utf-8")
+                    if stored.get("field") == field:
+                        raw = stored
+                if raw is None:
+                    raw = call_model(client, model, report.report_text, schema, field)
+                    path.write_text(json.dumps(raw, indent=1), encoding="utf-8")
+                    fresh += 1
+                raws[field] = raw
+            row = build_question_row(report.report_id, model, run, report.report_text, raws, schema)
+            rows.append(row)
+            print(
+                f"[{model}] {report_number}/{len(reports)} {report.report_id} run {run}: {len(raws)} questions "
+                f"({fresh} asked now), valid_json={row['valid_json']} attempts={row['attempts']} latency={row['latency_s']:.1f}s",
+                flush=True,
+            )
+    return rows
+
+
 def main():
     parser = argparse.ArgumentParser(description="Benchmark Ollama models on structured extraction from chest CT reports.")
     parser.add_argument("--input", type=Path, default=None, help="CSV with report_id, report_text (default: the schema's reports file)")
@@ -285,6 +352,8 @@ def main():
     parser.add_argument("--models", nargs="+", required=True, help="Ollama model tags, e.g. gpt-oss:20b gemma4:26b")
     parser.add_argument("--schema", choices=SCHEMAS, default="chest_ct")
     parser.add_argument("--ids", type=Path, default=None, help="CSV with a report_id column: run only those reports")
+    parser.add_argument("--questions", type=Path, default=None,
+                        help="CSV with report_id and disputed_fields (from compare.py): ask only those fields, one call per field")
     parser.add_argument("--runs", type=int, default=1, help="repeat each report N times to measure determinism")
     parser.add_argument("--host", default="http://localhost:11434")
     parser.add_argument("--limit", type=int, default=None, help="only the first N reports")
@@ -308,6 +377,15 @@ def main():
         reports = reports[reports["report_id"].isin(wanted)]
         if reports.empty:
             sys.exit(f"ERROR: none of the report_ids in {args.ids} are in {input_path}")
+    questions = None
+    if args.questions is not None:
+        asked = pd.read_csv(args.questions, dtype=str, keep_default_na=False)
+        asked = asked[asked["disputed_fields"] != ""]
+        questions = {report_id: [field.removesuffix("_present") for field in fields.split(";")]
+                     for report_id, fields in zip(asked["report_id"], asked["disputed_fields"])}
+        reports = reports[reports["report_id"].isin(questions)]
+        if reports.empty:
+            sys.exit(f"ERROR: no report in {args.questions} has disputed fields")
     if args.limit is not None:
         reports = reports.head(args.limit)
 
@@ -328,7 +406,11 @@ def main():
     rows = []
     for model in args.models:
         print(f"== {model}: schema={args.schema}, think={thinking_for(model)!r}, num_ctx={options_for(model)['num_ctx']}, "
-              f"constrained_format={uses_constrained_format(model)}", flush=True)
+              f"constrained_format={uses_constrained_format(model)}" + (", question mode" if questions else ""), flush=True)
+        if questions is not None:
+            rows += run_questions(client, model, reports, questions, raw_dir, schema, args)
+            pd.DataFrame(rows, columns=result_columns(schema)).to_csv(args.output, index=False, encoding="utf-8")
+            continue
         for report_number, report in enumerate(reports.itertuples(index=False), start=1):
             for run in range(1, args.runs + 1):
                 path = raw_file(raw_dir, model, report.report_id, run)

@@ -64,24 +64,24 @@ def main():
              "--ground-truth", ground_truth, "--output", str(disputed)])
     if args.tiebreaker and len(args.models) >= 2:
         disputed_ids = pd.read_csv(disputed, dtype={"report_id": str})
-        disputed_ids = disputed_ids[disputed_ids["n_disputed"] > 0][["report_id"]]
+        disputed_ids = disputed_ids[disputed_ids["n_disputed"] > 0]
         if len(disputed_ids):
-            ids_file = Path(f"disputed_ids_{args.schema}.csv")
-            disputed_ids.to_csv(ids_file, index=False)
             tiebreak_results = Path(f"results_{args.schema}_tiebreaker.csv")
             tiebreak = ["extract.py", "--schema", args.schema, "--output", str(tiebreak_results), "--host", args.host,
-                        "--ids", str(ids_file), "--models", args.tiebreaker]
+                        "--questions", str(disputed), "--models", args.tiebreaker]
             if args.input is not None:
                 tiebreak += ["--input", str(args.input)]
             if args.allow_cloud:
                 tiebreak.append("--allow-cloud")
+            if args.reparse:
+                tiebreak.append("--reparse")
             run(tiebreak)
             merged = pd.concat([pd.read_csv(results, dtype={"report_id": str}), pd.read_csv(tiebreak_results, dtype={"report_id": str})])
             merged = merged.drop_duplicates(subset=["report_id", "model", "run"], keep="last")
             merged.to_csv(results, index=False, encoding="utf-8")
             tiebreak_results.unlink()
-            ids_file.unlink()
-            print(f"\ntiebreaker {args.tiebreaker} ran on {len(disputed_ids)} disputed reports; rows merged into {results}")
+            print(f"\ntiebreaker {args.tiebreaker} answered {int(disputed_ids['n_disputed'].sum())} disputed fields in "
+                  f"{len(disputed_ids)} reports; rows merged into {results}")
         else:
             print("\nno disputed reports, tiebreaker not needed")
     resolve = ["resolve.py", "--schema", args.schema, "--results", str(results), "--models", *args.models]

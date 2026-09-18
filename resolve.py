@@ -70,12 +70,15 @@ def main():
             continue
         source_for_field = {}
         for field in fields:
-            votes = {model: is_present(rows_by_model[model].at[report_id, field]) for model in voters}
+            votes = {model: is_present(rows_by_model[model].at[report_id, field]) for model in voters
+                     if not pd.isna(rows_by_model[model].at[report_id, field])}
+            if not votes:
+                continue
             yes = [model for model, vote in votes.items() if vote]
             no = [model for model, vote in votes.items() if not vote]
             if not yes or not no:
-                winner = voters[0]
-            elif len(voters) >= 3:
+                winner = next(model for model in voters if model in votes)
+            elif len(votes) >= 3:
                 winners = yes if len(yes) > len(no) else no
                 winner = winners[0]
                 deciders = [model for model in winners if model not in voters[:2]]
@@ -84,7 +87,7 @@ def main():
                     if quote_is_wrong(rows_by_model[decider].at[report_id, field.replace("_present", "_evidence_ok")]):
                         needs_review = 1
             else:
-                winner = voters[0]
+                winner = next(model for model in voters if model in votes)
                 resolved_by = "unresolved"
                 needs_review = 1
             if yes and no:
