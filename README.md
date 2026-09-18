@@ -450,3 +450,16 @@ The artery fields are where the smaller model slips: gpt-oss called a subsegment
 | Total | 15 min | 42 min | 46 min |
 
 The pair disagreed on 56 fields in 23 of 50 reports (1.8% of fields), gemma right on 35, gpt-oss on 21; disagreement exposed 21 of gemma's 29 errors and 35 of gpt-oss's 43. The tiebreaker took as long as the pair because it re-extracted all 64 fields for each disputed report while only 3.8% of those fields were in dispute, and its own accuracy on the full form (96.9%) was below both primaries, so `final_ctpa.csv` landed at 99.2%, about gemma alone. The review flag now fires when the losing side of a dispute backed its value with a verbatim quote in either direction; on this run that flags 20 reports and covers 13 of the 15 with a wrong field; the two it misses (P013, P040) are cases where the majority asserted a level with a verbatim quote and the lone dissenter had nothing to quote.
+
+### Cloud validation of grouped extraction (`--grouped`)
+
+Same 50 reports, same reference, single 64-field call versus the gated groups. The number that matters is reports with every embolism field right.
+
+| Model, mode | Valid | PE-field accuracy | Every PE field right | Among the 29 PE-positive | Calls per report | Cloud seconds per report |
+|---|---|---|---|---|---|---|
+| gemma4:31b-cloud, single call | 50/50 | 99.8% | 48/50 (96%) | 27/29 (93%) | 1 | 72 |
+| gemma4:31b-cloud, grouped | 50/50 | 99.6% | 48/50 (96%) | 27/29 (93%) | 4.6 | 97 |
+| gpt-oss:20b-cloud, single call | 50/50 | 99.0% | 38/50 (76%) | 17/29 (59%) | 1 | 74 |
+| gpt-oss:20b-cloud, grouped | 50/50 | 99.6% | 44/50 (88%) | 23/29 (79%) | 4.6 | 97 |
+
+The strong model was at its ceiling either way (its remaining misses are "extensive bilateral lobar and segmental clot" filled into lobes the report never named). The weaker model gained 12 points of whole-report correctness and 20 among positives for about a third more time. For comparison, the laptop pair with the single call stood at 74% and 71% of reports fully right. Grouped mode is therefore the recommended way to run the CTPA schema; a tiebreaker is only worth it in question mode, and possibly not at all.
