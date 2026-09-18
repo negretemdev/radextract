@@ -104,6 +104,7 @@ It prints, per retried or failed call, each attempt's `done_reason`, thinking le
 | `--limit` | all | only the first N reports |
 | `--force` | off | re-run even if the raw file exists |
 | `--reparse` | off | re-validate existing raw files from their stored attempts, no model calls |
+| (console) | | one line per report: `calls=` (model calls made), `retries=` (calls whose answer failed validation and were repeated), `ok` or `FAILED <group>`, seconds, and in grouped mode the groups skipped because no embolism was found; a tqdm bar per model gives the ETA. In the results CSV `attempts` is the number of calls. |
 | `--grouped` | off | several short calls per report instead of one 64-field call (`CALL_GROUPS` in `schema_ctpa.py`): embolism core and lung findings for every report, levels, lobar and segmental groups only when an embolism was found, named segments only when segmental involvement was found; raw files end in `_grouped.json` |
 | `--questions` | off | CSV with `report_id` and `disputed_fields` (from `compare.py`): ask only those fields, one call each; raw files are `raw/<schema>/<model>_<id>_<run>_q_<field>.json`; `attempts` and `latency_s` are summed over the questions |
 | `--allow-cloud` | off | permit `*-cloud` / `*:cloud` tags (synthetic data only) |

@@ -6,4 +6,5 @@ dependencies = [
     "ollama>=0.6.2",
     "pandas>=3.0.5",
     "pydantic>=2.13.5",
+    "tqdm>=4.70.1",
 ]

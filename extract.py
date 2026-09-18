@@ -17,6 +17,7 @@ from pathlib import Path
 import pandas as pd
 from ollama import Client, ResponseError
 from pydantic import ValidationError
+from tqdm import tqdm
 
 SCHEMAS = {"chest_ct": "schema", "binary": "schema_binary", "ctpa": "schema_ctpa"}
 OPTIONS = {"temperature": 0, "seed": 42, "num_ctx": 8192}
@@ -392,6 +393,19 @@ def result_columns(schema) -> list[str]:
     return columns
 
 
+def describe(raw: dict) -> str:
+    """One line per report for the console: calls made, retries, failed and skipped groups."""
+    calls = len(raw["attempts"])
+    retries = sum(1 for attempt in raw["attempts"] if attempt["validation_error"])
+    if raw.get("grouped"):
+        failed = [call["group"] for call in raw["calls"] if not call.get("skipped") and not call.get("valid")]
+        skipped = [call["group"] for call in raw["calls"] if call.get("skipped")]
+        status = "FAILED " + ",".join(failed) if failed else "ok"
+        return f"calls={calls} retries={retries} {status} {raw['latency_s']:.0f}s" + (f" | skipped: {', '.join(skipped)}" if skipped else "")
+    status = "ok" if raw["valid_json"] else "FAILED"
+    return f"calls={calls} retries={retries} {status} {raw['latency_s']:.0f}s"
+
+
 def build_row(report_id: str, model: str, run: int, report_text: str, raw: dict, schema) -> dict:
     row = {
         "report_id": report_id,
@@ -441,6 +455,7 @@ def run_questions(client: Client, model: str, reports, questions: dict, raw_dir:
     """Question mode: for each report, ask only the listed fields, one call each, and build one row per report."""
     safe_model = re.sub(r"[^A-Za-z0-9.-]+", "_", model)
     rows = []
+    progress = tqdm(total=len(reports) * args.runs, desc=model, unit="report", dynamic_ncols=True)
     for report_number, report in enumerate(reports.itertuples(index=False), start=1):
         for run in range(1, args.runs + 1):
             raws = {}
@@ -462,11 +477,12 @@ def run_questions(client: Client, model: str, reports, questions: dict, raw_dir:
                 raws[field] = raw
             row = build_question_row(report.report_id, model, run, report.report_text, raws, schema)
             rows.append(row)
-            print(
-                f"[{model}] {report_number}/{len(reports)} {report.report_id} run {run}: {len(raws)} questions "
-                f"({fresh} asked now), valid_json={row['valid_json']} attempts={row['attempts']} latency={row['latency_s']:.1f}s",
-                flush=True,
-            )
+            retries = sum(1 for raw in raws.values() for attempt in raw["attempts"] if attempt["validation_error"])
+            failed = [field for field, raw in raws.items() if not raw["valid_json"]]
+            tqdm.write(f"[{model}] {report.report_id} run {run}: {len(raws)} questions ({fresh} asked now) retries={retries} "
+                       + ("FAILED " + ",".join(failed) if failed else "ok") + f" {row['latency_s']:.0f}s")
+            progress.update(1)
+    progress.close()
     return rows
 
 
@@ -539,6 +555,7 @@ def main():
             rows += run_questions(client, model, reports, questions, raw_dir, schema, args)
             pd.DataFrame(rows, columns=result_columns(schema)).to_csv(args.output, index=False, encoding="utf-8")
             continue
+        progress = tqdm(total=len(reports) * args.runs, desc=model, unit="report", dynamic_ncols=True)
         for report_number, report in enumerate(reports.itertuples(index=False), start=1):
             for run in range(1, args.runs + 1):
                 path = raw_file(raw_dir, model, report.report_id, run)
@@ -565,12 +582,10 @@ def main():
                     path.write_text(json.dumps(raw, indent=1), encoding="utf-8")
                     row = build_row(report.report_id, model, run, report.report_text, raw, schema)
                 rows.append(row)
-                print(
-                    f"[{model}] {report_number}/{len(reports)} {report.report_id} run {run}: "
-                    f"valid_json={row['valid_json']} attempts={row['attempts']} latency={row['latency_s']:.1f}s {note}",
-                    flush=True,
-                )
+                tqdm.write(f"[{model}] {report.report_id} run {run}: {describe(raw)} {note}")
+                progress.update(1)
                 pd.DataFrame(rows, columns=result_columns(schema)).to_csv(args.output, index=False, encoding="utf-8")
+        progress.close()
     print(f"Wrote {len(rows)} rows to {args.output}")
 
 
