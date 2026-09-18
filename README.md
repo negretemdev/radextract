@@ -465,3 +465,14 @@ Same 50 reports, same reference, single 64-field call versus the gated groups. T
 | gpt-oss:20b-cloud, grouped | 50/50 | 99.6% | 44/50 (88%) | 23/29 (79%) | 4.6 | 97 |
 
 The strong model was at its ceiling either way (its remaining misses are "extensive bilateral lobar and segmental clot" filled into lobes the report never named). The weaker model gained 12 points of whole-report correctness and 20 among positives for about a third more time. For comparison, the laptop pair with the single call stood at 74% and 71% of reports fully right. Grouped mode is therefore the recommended way to run the CTPA schema; a tiebreaker is only worth it in question mode, and possibly not at all.
+
+### Convention and guard changes, checked on the 26 reports that had ever produced a PE-field error
+
+After the pooled error analysis (see the conventions above), the 26 reports with any PE-field error in any run, or a changed convention, were rerun in grouped mode on the cloud models under the corrected prompt. Cells compared with the previous grouped answers:
+
+| Model | Cells fixed | Newly wrong | Still wrong | Reports with every PE field right |
+|---|---|---|---|---|
+| gemma4:31b-cloud | 4 | 1 | 4 | 18/26 → 21/26 |
+| gpt-oss:20b-cloud | 5 | 2 | 1 | 21/26 → 24/26 |
+
+Projected over all 50 (the other 24 reports were right in every run): gemma 45/50 and gpt-oss 48/50 reports with every embolism field right. What remains: gemma calls one thrombus spanning several vessels "multiple" (3 cells, against the stated rule), "bilateral segmental branches" in a sentence that also names the right lower lobe artery passes the guard, one named segment hallucinated under "all lobes", and gpt-oss calling a subsegmental embolus segmental once. An earlier wording of the quote rule ("the quote must contain the words that name that lobe") made gpt-oss drop "both main pulmonary arteries" and "all lobes" values instead of quoting them (11 cells); the rule now says that "both", "bilateral" and "all lobes" name the sides and lobes.
