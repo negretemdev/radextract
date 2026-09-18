@@ -29,6 +29,27 @@ class Finding(BaseModel):
 
 PE_SUBFIELDS = ["pe_acute", "pe_chronic", "pe_saddle", "pe_main", "pe_lobar", "pe_segmental", "pe_subsegmental",
                 "pe_right", "pe_left", "pe_multiple", "pe_occlusive", "pe_nonocclusive"]
+# one boolean per artery; a present artery implies its lobe's segmental field, its level field and its side
+ARTERY_IMPLIES = {
+    "pe_main_right": ["pe_main", "pe_right"], "pe_main_left": ["pe_main", "pe_left"],
+    "pe_lobar_right_upper": ["pe_lobar", "pe_right"], "pe_lobar_right_middle": ["pe_lobar", "pe_right"],
+    "pe_lobar_right_lower": ["pe_lobar", "pe_right"], "pe_lobar_left_upper": ["pe_lobar", "pe_left"],
+    "pe_lobar_left_lower": ["pe_lobar", "pe_left"], "pe_lobar_interlobar_right": ["pe_lobar", "pe_right"],
+    "pe_lobar_interlobar_left": ["pe_lobar", "pe_left"],
+    "pe_segmental_right_upper": ["pe_segmental", "pe_right"], "pe_segmental_right_middle": ["pe_segmental", "pe_right"],
+    "pe_segmental_right_lower": ["pe_segmental", "pe_right"], "pe_segmental_left_upper": ["pe_segmental", "pe_left"],
+    "pe_segmental_lingula": ["pe_segmental", "pe_left"], "pe_segmental_left_lower": ["pe_segmental", "pe_left"],
+    "pe_segment_rul_apical": ["pe_segmental_right_upper"], "pe_segment_rul_anterior": ["pe_segmental_right_upper"],
+    "pe_segment_rul_posterior": ["pe_segmental_right_upper"], "pe_segment_rml_medial": ["pe_segmental_right_middle"],
+    "pe_segment_rml_lateral": ["pe_segmental_right_middle"], "pe_segment_rll_superior": ["pe_segmental_right_lower"],
+    "pe_segment_rll_medial_basal": ["pe_segmental_right_lower"], "pe_segment_rll_anterior_basal": ["pe_segmental_right_lower"],
+    "pe_segment_rll_lateral_basal": ["pe_segmental_right_lower"], "pe_segment_rll_posterior_basal": ["pe_segmental_right_lower"],
+    "pe_segment_lul_apicoposterior": ["pe_segmental_left_upper"], "pe_segment_lul_anterior": ["pe_segmental_left_upper"],
+    "pe_segment_lingula_superior": ["pe_segmental_lingula"], "pe_segment_lingula_inferior": ["pe_segmental_lingula"],
+    "pe_segment_lll_superior": ["pe_segmental_left_lower"], "pe_segment_lll_anteromedial_basal": ["pe_segmental_left_lower"],
+    "pe_segment_lll_lateral_basal": ["pe_segmental_left_lower"], "pe_segment_lll_posterior_basal": ["pe_segmental_left_lower"],
+}
+PE_SUBFIELDS += list(ARTERY_IMPLIES)
 
 
 class ReportExtraction(BaseModel):
@@ -48,6 +69,39 @@ class ReportExtraction(BaseModel):
     pe_multiple: Finding
     pe_occlusive: Finding
     pe_nonocclusive: Finding
+    pe_main_right: Finding
+    pe_main_left: Finding
+    pe_lobar_right_upper: Finding
+    pe_lobar_right_middle: Finding
+    pe_lobar_right_lower: Finding
+    pe_lobar_left_upper: Finding
+    pe_lobar_left_lower: Finding
+    pe_lobar_interlobar_right: Finding
+    pe_lobar_interlobar_left: Finding
+    pe_segmental_right_upper: Finding
+    pe_segmental_right_middle: Finding
+    pe_segmental_right_lower: Finding
+    pe_segmental_left_upper: Finding
+    pe_segmental_lingula: Finding
+    pe_segmental_left_lower: Finding
+    pe_segment_rul_apical: Finding
+    pe_segment_rul_anterior: Finding
+    pe_segment_rul_posterior: Finding
+    pe_segment_rml_medial: Finding
+    pe_segment_rml_lateral: Finding
+    pe_segment_rll_superior: Finding
+    pe_segment_rll_medial_basal: Finding
+    pe_segment_rll_anterior_basal: Finding
+    pe_segment_rll_lateral_basal: Finding
+    pe_segment_rll_posterior_basal: Finding
+    pe_segment_lul_apicoposterior: Finding
+    pe_segment_lul_anterior: Finding
+    pe_segment_lingula_superior: Finding
+    pe_segment_lingula_inferior: Finding
+    pe_segment_lll_superior: Finding
+    pe_segment_lll_anteromedial_basal: Finding
+    pe_segment_lll_lateral_basal: Finding
+    pe_segment_lll_posterior_basal: Finding
     right_heart_strain: Finding
     pulmonary_artery_enlargement: Finding
     perfusion_defect: Finding
@@ -89,6 +143,7 @@ Rules:
 - pulmonary_embolism is true for any acute or chronic embolus, thrombus or filling defect in a pulmonary artery. "No acute pulmonary embolism" together with chronic thrombus means pulmonary_embolism present, pe_acute mentioned but not present, pe_chronic present.
 - pe_acute is present only when the report itself calls the embolism acute; mentioned when it says acute or no acute. pe_chronic likewise needs the word chronic (or chronic-appearing). Words such as new, residual, resolving or single do not decide acute or chronic.
 - All pe_ fields are mentioned false, present false, evidence null unless pulmonary_embolism is present. When it is: pe_saddle, pe_main, pe_lobar, pe_segmental and pe_subsegmental are the arterial levels, present for each level described, mentioned but not present for a level explicitly negated. The lobar arteries are the upper, middle and lower lobe pulmonary arteries and the interlobar arteries: "right lower lobe pulmonary artery", "left upper lobe artery", "lower lobe arteries" and "right interlobar artery" all make pe_lobar present. A segmental artery of a lobe ("right lower lobe segmental artery", "segmental branches") is segmental, not lobar; pe_right and pe_left are the sides involved ("bilateral" makes both true), mentioned but not present only when the report explicitly says that side is clear or free of thrombus; pe_multiple is true when more than one embolus, filling defect or vessel is involved and false for a single one; a clot described as occlusive makes pe_occlusive true and pe_nonocclusive false, a clot described as nonocclusive the reverse, and both are true when both are described.
+- Artery fields, all present only when the report names that artery as involved: pe_main_right and pe_main_left (the right and left main pulmonary arteries); pe_lobar_<lobe> for the right upper, right middle, right lower, left upper and left lower lobe pulmonary arteries ("right lower lobe pulmonary artery", "left upper lobe artery", "lower lobe arteries") and pe_lobar_interlobar_right/left; pe_segmental_<lobe> when segmental arteries of that lobe are involved ("right lower lobe segmental arteries", "segmental branches of both lower lobes"), with the lingula separate from the left upper lobe; pe_segment_<lobe>_<segment> only when the report names the segment ("posterior basal segmental artery of the right lower lobe"). Unnamed lobes stay unmentioned ("bilateral lobar clot" does not name a lobe). A whole side described as clear or patent makes every artery field of that side mentioned but not present.
 - suboptimal_study is present when the report calls the study limited, suboptimal, degraded or nondiagnostic for pulmonary embolism; mentioned but not present when the report speaks of the study's diagnostic quality or says an artifact does not limit evaluation; not mentioned when the report only comments on opacification or artifact without judging the study. An artifact described as mild does not make the study suboptimal. motion_artifact is present when any motion artifact is described. poor_contrast_opacification is present when opacification is called poor, suboptimal or inadequate, and mentioned but not present when it is called adequate, good or excellent.
 - right_heart_strain is present when the report describes right ventricular dilation or enlargement, an RV/LV ratio above 1, septal flattening or bowing, contrast reflux into the IVC, or calls it right heart strain; mentioned but not present when it states no strain or a normal right ventricle. pulmonary_artery_enlargement: the pulmonary artery described as enlarged or dilated. perfusion_defect: a perfusion or iodine-map defect. pulmonary_infarct: an infarct described. lymphadenopathy covers mediastinal, hilar or axillary nodes.
 
@@ -146,6 +201,21 @@ def normalize(data: dict) -> tuple[dict, dict]:
         if finding.get("mentioned") is False and finding.get("present") is not True and evidence is not None:
             finding["evidence"] = None
             counts["quote_dropped_for_unmentioned"] += 1
+    counts["level_made_present"] = 0
+    for artery, implied_names in ARTERY_IMPLIES.items():
+        finding = data.get(artery)
+        if isinstance(finding, dict) and finding.get("present") is True:
+            queue = list(implied_names)
+            while queue:
+                name = queue.pop()
+                implied = data.get(name)
+                if isinstance(implied, dict) and implied.get("present") is not True:
+                    implied["present"] = True
+                    implied["mentioned"] = True
+                    if implied.get("evidence") is None:
+                        implied["evidence"] = finding.get("evidence")
+                    counts["level_made_present"] += 1
+                queue += ARTERY_IMPLIES.get(name, [])
     embolism = data.get("pulmonary_embolism")
     if not (isinstance(embolism, dict) and embolism.get("present") is True):
         for name in PE_SUBFIELDS:
