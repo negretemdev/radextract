@@ -219,6 +219,89 @@ def call_model(client: Client, model: str, report_text: str, schema, field: str 
     }
 
 
+def call_model_grouped(client: Client, model: str, report_text: str, schema) -> dict:
+    """Several short calls per report (schema.CALL_GROUPS): a group whose condition is not met is filled as not mentioned
+    without a call. Each group is validated and retried on its own; the merged answer gets the schema's cross-field
+    repairs and the full validation."""
+    tag, _ = split_model_tag(model)
+    think = thinking_for(model)
+    options = options_for(model)
+    constrained = uses_constrained_format(model)
+    data = {}
+    attempts = []
+    calls = []
+    valid = True
+    started = time.perf_counter()
+    for group in schema.CALL_GROUPS:
+        if group["when"] is not None and not group["when"](data):
+            for field in group["fields"]:
+                data[field] = {"mentioned": False, "present": False, "evidence": None}
+            calls.append({"group": group["name"], "skipped": True})
+            continue
+        model_class = schema.group_model(group["name"])
+        response_format = model_class.model_json_schema() if constrained else None
+        messages = schema.group_messages(report_text, group["name"], include_schema=not constrained)
+        answer = None
+        for attempt in range(1, MAX_RETRIES + 2):
+            attempt_started = time.perf_counter()
+            response = chat_with_transient_retries(client, tag, messages, response_format, think, options)
+            content = response.message.content or ""
+            record = {
+                "group": group["name"],
+                "attempt": attempt,
+                "content": content,
+                "thinking": response.message.thinking,
+                "latency_s": time.perf_counter() - attempt_started,
+                "prompt_eval_count": response.prompt_eval_count,
+                "eval_count": response.eval_count,
+                "done_reason": response.done_reason,
+                "validation_error": None,
+            }
+            try:
+                parsed = json.loads(strip_code_fences(content))
+                parsed, record["repairs"] = schema.normalize_group(parsed)
+                answer = model_class.model_validate(parsed).model_dump()
+                attempts.append(record)
+                break
+            except (json.JSONDecodeError, ValidationError) as error:
+                record["validation_error"] = compact_validation_error(error) if isinstance(error, ValidationError) else f"- (root): invalid JSON: {error}"
+                attempts.append(record)
+                messages = messages + [
+                    {"role": "assistant", "content": content},
+                    {"role": "user", "content": "Your JSON failed validation:\n" + record["validation_error"]
+                     + "\nReturn the complete corrected JSON object only."},
+                ]
+        calls.append({"group": group["name"], "skipped": False, "valid": answer is not None})
+        if answer is None:
+            valid = False
+            for field in group["fields"]:
+                data[field] = {"mentioned": False, "present": False, "evidence": None}
+            continue
+        data.update(answer)
+    repairs = {}
+    extraction = None
+    if valid:
+        data, repairs = schema.normalize(data)
+        try:
+            extraction = schema.ReportExtraction.model_validate(data)
+        except ValidationError:
+            valid = False
+    return {
+        "schema": schema.__name__,
+        "model": model,
+        "grouped": True,
+        "think": think,
+        "constrained_format": constrained,
+        "options": options,
+        "valid_json": valid,
+        "attempts": attempts,
+        "calls": calls,
+        "repairs": repairs,
+        "latency_s": time.perf_counter() - started,
+        "extraction": extraction.model_dump() if extraction is not None else None,
+    }
+
+
 def normalize_with_offsets(text: str):
     """Lowercase and collapse whitespace. Also return, per normalized character, its offset in the original text."""
     normalized = []
@@ -359,6 +442,7 @@ def main():
     parser.add_argument("--limit", type=int, default=None, help="only the first N reports")
     parser.add_argument("--force", action="store_true", help="re-run even if the raw file exists")
     parser.add_argument("--reparse", action="store_true", help="re-validate existing raw files from their stored attempts (no model calls)")
+    parser.add_argument("--grouped", action="store_true", help="several short calls per report (schema.CALL_GROUPS) instead of one call")
     parser.add_argument("--allow-cloud", action="store_true", help="permit *-cloud / *:cloud model tags (synthetic data only)")
     args = parser.parse_args()
 
@@ -402,11 +486,13 @@ def main():
             sys.exit(f"ERROR: cannot reach Ollama at {args.host}: {error}")
 
     raw_dir = Path("raw") / getattr(schema, "RAW_DIR_NAME", args.schema)
+    if args.grouped and not hasattr(schema, "CALL_GROUPS"):
+        sys.exit(f"ERROR: schema {args.schema} does not define CALL_GROUPS; --grouped is not available for it")
     raw_dir.mkdir(parents=True, exist_ok=True)
     rows = []
     for model in args.models:
         print(f"== {model}: schema={args.schema}, think={thinking_for(model)!r}, num_ctx={options_for(model)['num_ctx']}, "
-              f"constrained_format={uses_constrained_format(model)}" + (", question mode" if questions else ""), flush=True)
+              f"constrained_format={uses_constrained_format(model)}" + (", question mode" if questions else "") + (", grouped calls" if args.grouped else ""), flush=True)
         if questions is not None:
             rows += run_questions(client, model, reports, questions, raw_dir, schema, args)
             pd.DataFrame(rows, columns=result_columns(schema)).to_csv(args.output, index=False, encoding="utf-8")
@@ -414,11 +500,13 @@ def main():
         for report_number, report in enumerate(reports.itertuples(index=False), start=1):
             for run in range(1, args.runs + 1):
                 path = raw_file(raw_dir, model, report.report_id, run)
+                if args.grouped:
+                    path = path.with_name(path.stem + "_grouped.json")
                 raw = None
                 note = ""
                 if path.exists() and not args.force:
                     stored = json.loads(path.read_text(encoding="utf-8"))
-                    if args.reparse:
+                    if args.reparse and not stored.get("grouped"):
                         stored = reparse(stored, schema)
                         path.write_text(json.dumps(stored, indent=1), encoding="utf-8")
                     try:
@@ -428,7 +516,10 @@ def main():
                     except ValidationError:
                         note = "(raw file was from an older schema, re-run)"
                 if raw is None:
-                    raw = call_model(client, model, report.report_text, schema)
+                    if args.grouped:
+                        raw = call_model_grouped(client, model, report.report_text, schema)
+                    else:
+                        raw = call_model(client, model, report.report_text, schema)
                     path.write_text(json.dumps(raw, indent=1), encoding="utf-8")
                     row = build_row(report.report_id, model, run, report.report_text, raw, schema)
                 rows.append(row)

@@ -303,3 +303,58 @@ def normalize(data: dict) -> tuple[dict, dict]:
                 finding["evidence"] = None
                 counts["pe_fields_cleared"] += 1
     return data, {key: value for key, value in counts.items() if value}
+
+
+# ---- grouped extraction: several short calls per report instead of one 64-field call ----
+def embolism_present(data: dict) -> bool:
+    return isinstance(data.get("pulmonary_embolism"), dict) and data["pulmonary_embolism"].get("present") is True
+
+
+def segmental_present(data: dict) -> bool:
+    names = ["pe_segmental"] + [name for name in FINDING_NAMES if name.startswith("pe_segmental_")]
+    return any(isinstance(data.get(name), dict) and data[name].get("present") is True for name in names)
+
+
+CALL_GROUPS = [
+    {"name": "core", "when": None, "fields": ["pulmonary_embolism", "pe_acute", "pe_chronic", "pe_saddle", "pe_multiple",
+                                              "pe_occlusive", "pe_nonocclusive", "suboptimal_study", "poor_contrast_opacification", "motion_artifact"]},
+    {"name": "levels", "when": embolism_present, "fields": ["pe_main", "pe_lobar", "pe_segmental", "pe_subsegmental", "pe_right", "pe_left",
+                                                            "pe_main_right", "pe_main_left"]},
+    {"name": "lobar", "when": embolism_present, "fields": [name for name in FINDING_NAMES if name.startswith("pe_lobar_")]},
+    {"name": "segmental", "when": embolism_present, "fields": [name for name in FINDING_NAMES if name.startswith("pe_segmental_")]},
+    {"name": "segments_right", "when": segmental_present, "fields": [name for name in FINDING_NAMES if name.startswith(("pe_segment_rul", "pe_segment_rml", "pe_segment_rll"))]},
+    {"name": "segments_left", "when": segmental_present, "fields": [name for name in FINDING_NAMES if name.startswith(("pe_segment_lul", "pe_segment_lingula", "pe_segment_lll"))]},
+    {"name": "other", "when": None, "fields": ["right_heart_strain", "pulmonary_artery_enlargement", "perfusion_defect", "pulmonary_infarct",
+                                               "consolidation", "ground_glass_opacity", "atelectasis", "pulmonary_nodule", "emphysema",
+                                               "mosaic_attenuation", "pleural_effusion", "pneumothorax", "pericardial_effusion", "cardiomegaly", "lymphadenopathy"]},
+]
+assert sorted(name for group in CALL_GROUPS for name in group["fields"]) == sorted(FINDING_NAMES)
+
+
+def group_model(group_name: str):
+    """A Pydantic model with only that group's fields, for constrained decoding and validation."""
+    from pydantic import create_model
+    fields = next(group["fields"] for group in CALL_GROUPS if group["name"] == group_name)
+    return create_model(f"Group_{group_name}", **{name: (Finding, ...) for name in fields})
+
+
+def group_messages(report_text: str, group_name: str, include_schema: bool) -> list[dict]:
+    fields = next(group["fields"] for group in CALL_GROUPS if group["name"] == group_name)
+    system_prompt = EXTRACTION_PROMPT + "\n\nAnswer for these fields only, one JSON object with exactly these keys:\n" + "\n".join(
+        f"- {name}: {FIELD_DEFINITIONS[name]}" for name in fields)
+    if include_schema:
+        system_prompt += "\n\nThe JSON object must match this JSON schema exactly:\n" + json.dumps(group_model(group_name).model_json_schema())
+    return [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": "Extract these findings from this report:\n\n" + report_text},
+    ]
+
+
+def normalize_group(data: dict) -> tuple[dict, dict]:
+    """Per-finding repairs on one group's answer (the cross-field repairs run once all groups are merged)."""
+    counts = {}
+    if isinstance(data, dict):
+        for finding in data.values():
+            if isinstance(finding, dict):
+                repair_finding(finding, counts)
+    return data, counts

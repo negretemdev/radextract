@@ -35,6 +35,7 @@ def main():
     parser.add_argument("--force", action="store_true")
     parser.add_argument("--reparse", action="store_true", help="re-validate existing raw files, no model calls")
     parser.add_argument("--tiebreaker", default=None, help="third model, run only on the reports where the first two disagree")
+    parser.add_argument("--grouped", action="store_true", help="several short calls per report instead of one (schemas with CALL_GROUPS)")
     parser.add_argument("--allow-cloud", action="store_true")
     args = parser.parse_args()
 
@@ -55,6 +56,8 @@ def main():
         extract.append("--force")
     if args.reparse:
         extract.append("--reparse")
+    if args.grouped:
+        extract.append("--grouped")
     if args.allow_cloud:
         extract.append("--allow-cloud")
     run(extract)
