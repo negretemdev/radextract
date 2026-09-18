@@ -7,6 +7,7 @@ To add a finding, add one line to ReportExtraction (name: Finding).
 """
 
 import json
+import re
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
@@ -331,7 +332,7 @@ def normalize(data: dict, report_text: str = "") -> tuple[dict, dict]:
         if isinstance(finding, dict) and finding.get("present") is True:
             quote = (finding.get("evidence") or "").lower()
             context = quote + " " + sentence_around(quote, report_text)   # the quote itself, plus the sentence it was taken from
-            if not all(any(phrase in context for phrase in group) for group in phrases):
+            if not all(any(re.search(r"\b" + re.escape(phrase) + r"\b", context) for phrase in group) for group in phrases):
                 finding["mentioned"] = False
                 finding["present"] = False
                 finding["evidence"] = None
