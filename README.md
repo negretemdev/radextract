@@ -487,3 +487,18 @@ Projected over all 50 (the other 24 reports were right in every run): gemma 45/5
 | gpt-oss:20b-cloud | 7 | 0 | 1 | 25/26 |
 
 Projected over all 50: 49 of 50 reports fully right on the embolism fields for each model, 28 of 29 among PE-positive ones. Each model keeps one residual: gemma lights `pe_segmental_right_lower` from "nonocclusive clot in bilat segmental branches" in the one sentence that also names the right lower lobe artery (the sentence-level guard cannot separate them), and gpt-oss misses the right middle lobe in "right middle lobe and right lower lobe segmental arteries".
+
+### Laptop run: grouped extraction, reviewed conventions (the production candidate)
+
+`uv run benchmark.py --schema ctpa --models gemma4:26b gpt-oss:20b --grouped`, 50 reports, no tiebreaker.
+
+| | gemma4:26b | gpt-oss:20b |
+|---|---|---|
+| Valid JSON | 50/50 | 50/50 |
+| Calls per report | 4.6 | 4.8 |
+| Every PE field right | 47/50 (94%) | 48/50 (96%) |
+| Among the 29 PE-positive | 26/29 (90%) | 27/29 (93%) |
+| Median time per report | 14 s | 55 s |
+| Total | 11 min | 50 min |
+
+For comparison the single-call run on the same laptop stood at 37 and 35 of 50 before the conventions and guard, 39 and 38 after them. The pair disagreed on 8 fields in 5 reports; disagreement exposed all 6 of gemma's wrong cells and both of gpt-oss's, with no shared error. gemma's misses: the "bilat segmental branches" sentence (P013), three of the six lobes under "branches of all lobes" (P027) and one named segment (P047); gpt-oss's: the right middle lobe in "right middle lobe and right lower lobe segmental arteries" (P030) and one named segment (P047). Resolving the pair with gpt-oss as primary gives a final file with 49 of 50 reports fully right and the 5 disputed reports flagged; with gemma as primary, 48 of 50.
