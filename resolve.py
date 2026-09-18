@@ -6,8 +6,8 @@ Per scored field the value is the majority across the models that produced valid
 value is kept and the report is flagged. Columns added at the end:
   resolved_by    agreement | tiebreaker | unresolved (the worst case over the report's fields)
   needs_review   1 when any field is unresolved, when a deciding third-model value has a quote that is not verbatim,
-                 or when the losing side of a dispute asserted the finding with a verbatim quote (a quote is evidence,
-                 silence is not, so a majority of denials does not settle it without a look)
+                 or when the losing side of a dispute backed its value with a verbatim quote, asserting or negating
+                 (a quote is evidence, silence is not, so a majority without one does not settle it without a look)
   disputed_fields  the fields that were disputed, with each model's value and quote
 """
 
@@ -87,8 +87,9 @@ def main():
                 winner = voters[0]
                 resolved_by = "unresolved"
                 needs_review = 1
-            if yes and no and not is_present(rows_by_model[winner].at[report_id, field]):
-                for model in yes:
+            if yes and no:
+                losers = no if is_present(rows_by_model[winner].at[report_id, field]) else yes
+                for model in losers:
                     if quote_is_verbatim(rows_by_model[model].at[report_id, field.replace("_present", "_evidence_ok")]):
                         needs_review = 1
             if yes and no:

@@ -435,3 +435,16 @@ Zero retries where the three-state version had retried on 33 of 50 gemma reports
 | Time per report (cloud) | 72 s | 74 s |
 
 The artery fields are where the smaller model slips: gpt-oss called a subsegmental embolus lobar three times, and skipped a named segment the report spelled out four times. The pair disagreed on 28 fields in 14 of 50 reports, gemma right on 24, and 24 of gpt-oss's 25 errors were exposed by the disagreement. More specificity means more disputes to review: expect about a quarter of reports flagged with this schema against a tenth with the summary fields only. Code repairs across the 100 calls: `pe_*` cleared on 32 negative studies, 6 level fields made present by a named artery.
+
+### Laptop run: per-artery schema with the tiebreaker
+
+| | gemma4:26b | gpt-oss:20b | mistral-small3.2:24b (23 disputed reports) |
+|---|---|---|---|
+| Valid JSON | 50/50 | 49/50 | 23/23 |
+| Retries | 0 | 18 | 0 |
+| `present` accuracy, all fields | 99.1% | 99.1% | 96.9% |
+| `present` accuracy, artery fields | 99.0% | 98.7% | 96.6% |
+| Median time per report | 16 s | 37 s | 119 s |
+| Total | 15 min | 42 min | 46 min |
+
+The pair disagreed on 56 fields in 23 of 50 reports (1.8% of fields), gemma right on 35, gpt-oss on 21; disagreement exposed 21 of gemma's 29 errors and 35 of gpt-oss's 43. The tiebreaker took as long as the pair because it re-extracted all 64 fields for each disputed report while only 3.8% of those fields were in dispute, and its own accuracy on the full form (96.9%) was below both primaries, so `final_ctpa.csv` landed at 99.2%, about gemma alone. The review flag now fires when the losing side of a dispute backed its value with a verbatim quote in either direction; on this run that flags 19 reports and covers every report with a wrong field.
