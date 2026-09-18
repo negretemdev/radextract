@@ -52,6 +52,7 @@ ARTERY_IMPLIES = {
 PE_SUBFIELDS += list(ARTERY_IMPLIES)
 
 
+
 class ReportExtraction(BaseModel):
     suboptimal_study: Finding
     poor_contrast_opacification: Finding
@@ -144,11 +145,11 @@ FIELD_DEFINITIONS = {
     "pe_saddle": "a saddle embolus at the bifurcation of the main pulmonary artery",
     "pe_main": "embolus in the right or left main pulmonary artery",
     "pe_lobar": "embolus in a lobar artery: an upper, middle or lower lobe pulmonary artery, or an interlobar artery",
-    "pe_segmental": "embolus in a segmental artery or segmental branch",
+    "pe_segmental": "embolus in a segmental artery or segmental branch (a subsegmental artery does not count)",
     "pe_subsegmental": "embolus in a subsegmental artery or branch",
     "pe_right": "embolus in a right-sided pulmonary artery",
     "pe_left": "embolus in a left-sided pulmonary artery",
-    "pe_multiple": "more than one embolus, filling defect or vessel involved (false for a single embolus)",
+    "pe_multiple": "the report describes more than one embolus, thrombus or filling defect (plural, multiple, or a count above one); false for a single one; a single thrombus extending through several vessels is not multiple",
     "pe_occlusive": "clot described as occlusive",
     "pe_nonocclusive": "clot described as nonocclusive",
     "right_heart_strain": "right ventricular dilation or enlargement, RV/LV ratio above 1, septal flattening or bowing, contrast reflux into the IVC, or the words right heart strain",
@@ -174,12 +175,45 @@ FIELD_DEFINITIONS = {
 for key, words in LOBE_WORDS.items():
     if key != "lingula":
         FIELD_DEFINITIONS[f"pe_lobar_{key}"] = f"embolus in the {words} pulmonary artery itself (the lobar artery, not its segmental branches)"
-    FIELD_DEFINITIONS[f"pe_segmental_{key}"] = f"embolus in a segmental artery or segmental branch of the {words} (the lobe must be named by the report)"
+    FIELD_DEFINITIONS[f"pe_segmental_{key}"] = f"embolus in a segmental artery or segmental branch of the {words} (the lobe must be named by the report, and the quote must contain it)"
+FIELD_DEFINITIONS["pe_segmental_left_upper"] += "; the lingular segments belong to the left upper lobe, so a lingular artery counts here too"
 for name in FINDING_NAMES:
     if name.startswith("pe_segment_"):
         lobe, segment = name[len("pe_segment_"):].split("_", 1)
         FIELD_DEFINITIONS[name] = f"embolus in the {segment.replace('_', ' ')} segmental artery of the {SEGMENT_WORDS[lobe]} (the segment must be named by the report)"
 assert set(FIELD_DEFINITIONS) == set(FINDING_NAMES), set(FINDING_NAMES) ^ set(FIELD_DEFINITIONS)
+
+# a lobe, side or segment field counts only when its own quote names it: each entry is a list of phrase groups,
+# every group must be matched by at least one phrase (case-insensitive substring)
+LOBE_PHRASES = {
+    "right_upper": ["right upper", "rul", "r upper", "upper lobes", "both upper", "bilateral upper", "all lobes", "right and left upper", "right upper and"],
+    "right_middle": ["right middle", "rml", "r middle", "middle lobe", "all lobes"],
+    "right_lower": ["right lower", "rll", "r lower", "lower lobes", "both lower", "bilateral lower", "all lobes", "right and left lower", "right upper and lower", "right middle and lower"],
+    "left_upper": ["left upper", "lul", "l upper", "upper lobes", "both upper", "bilateral upper", "all lobes", "lingula", "lingular", "right and left upper"],
+    "left_lower": ["left lower", "lll", "l lower", "lower lobes", "both lower", "bilateral lower", "all lobes", "right and left lower", "left upper and lower"],
+    "lingula": ["lingula", "lingular", "all lobes"],
+}
+# each segment needs every group matched: "anterior and lateral basal" names both the anterior basal and the lateral basal segments
+SEGMENT_PHRASES = {"apical": [["apical"]], "anterior": [["anterior"]], "posterior": [["posterior"]], "medial": [["medial"]], "lateral": [["lateral"]],
+                   "superior": [["superior"]], "inferior": [["inferior"]], "medial_basal": [["medial", "mediobasal"], ["basal"]],
+                   "anterior_basal": [["anterior", "anterobasal"], ["basal"]], "lateral_basal": [["lateral", "laterobasal"], ["basal"]],
+                   "posterior_basal": [["posterior", "posterobasal"], ["basal"]], "apicoposterior": [["apicoposterior", "apical-posterior"]],
+                   "anteromedial_basal": [["anteromedial", "anterior medial"], ["basal"]]}
+SEGMENT_LOBES = {"rul": "right_upper", "rml": "right_middle", "rll": "right_lower", "lul": "left_upper", "lingula": "lingula", "lll": "left_lower"}
+QUOTE_MUST_CONTAIN = {
+    "pe_main_right": [["right main", "right and left main", "both main", "bilateral main", "r main"]],
+    "pe_main_left": [["left main", "right and left main", "both main", "bilateral main", "l main"]],
+    "pe_lobar_interlobar_right": [["interlobar"]],
+    "pe_lobar_interlobar_left": [["interlobar"]],
+}
+for lobe, phrases in LOBE_PHRASES.items():
+    if lobe != "lingula":
+        QUOTE_MUST_CONTAIN[f"pe_lobar_{lobe}"] = [phrases]
+    QUOTE_MUST_CONTAIN[f"pe_segmental_{lobe}"] = [phrases]
+for name in FINDING_NAMES:
+    if name.startswith("pe_segment_"):
+        lobe, segment = name[len("pe_segment_"):].split("_", 1)
+        QUOTE_MUST_CONTAIN[name] = [LOBE_PHRASES[SEGMENT_LOBES[lobe]]] + SEGMENT_PHRASES[segment]
 
 
 def question_messages(report_text: str, field: str, include_schema: bool) -> list[dict]:
@@ -207,12 +241,12 @@ Rules:
 - A whole structure described as normal or clear negates its findings: "the lungs are clear" makes consolidation, ground_glass_opacity, atelectasis, pulmonary_nodule, emphysema, mosaic_attenuation and pulmonary_infarct mentioned but not present.
 - pulmonary_embolism is true for any acute or chronic embolus, thrombus or filling defect in a pulmonary artery. "No acute pulmonary embolism" together with chronic thrombus means pulmonary_embolism present, pe_acute mentioned but not present, pe_chronic present.
 - pe_acute is present only when the report itself calls the embolism acute; mentioned when it says acute or no acute. pe_chronic likewise needs the word chronic (or chronic-appearing). Words such as new, residual, resolving or single do not decide acute or chronic.
-- All pe_ fields are mentioned false, present false, evidence null unless pulmonary_embolism is present. When it is: pe_saddle, pe_main, pe_lobar, pe_segmental and pe_subsegmental are the arterial levels, present for each level described, mentioned but not present for a level explicitly negated. The lobar arteries are the upper, middle and lower lobe pulmonary arteries and the interlobar arteries: "right lower lobe pulmonary artery", "left upper lobe artery", "lower lobe arteries" and "right interlobar artery" all make pe_lobar present. A segmental artery of a lobe ("right lower lobe segmental artery", "segmental branches") is segmental, not lobar; pe_right and pe_left are the sides involved ("bilateral" makes both true), mentioned but not present only when the report explicitly says that side is clear or free of thrombus; pe_multiple is true when more than one embolus, filling defect or vessel is involved and false for a single one; a clot described as occlusive makes pe_occlusive true and pe_nonocclusive false, a clot described as nonocclusive the reverse, and both are true when both are described.
-- Artery fields, all present only when the report names that artery as involved: pe_main_right and pe_main_left (the right and left main pulmonary arteries); pe_lobar_<lobe> for the right upper, right middle, right lower, left upper and left lower lobe pulmonary arteries ("right lower lobe pulmonary artery", "left upper lobe artery", "lower lobe arteries") and pe_lobar_interlobar_right/left; pe_segmental_<lobe> when segmental arteries of that lobe are involved ("right lower lobe segmental arteries", "segmental branches of both lower lobes"), with the lingula separate from the left upper lobe; pe_segment_<lobe>_<segment> only when the report names the segment ("posterior basal segmental artery of the right lower lobe"). Unnamed lobes stay unmentioned ("bilateral lobar clot", "bilateral segmental branches" and "segmental arteries of both lungs" do not name a lobe), while "all lobes" names every lobe including the lingula. A whole side described as clear or patent makes every artery field of that side mentioned but not present.
+- All pe_ fields are mentioned false, present false, evidence null unless pulmonary_embolism is present. When it is: pe_saddle, pe_main, pe_lobar, pe_segmental and pe_subsegmental are the arterial levels, present for each level described, mentioned but not present for a level explicitly negated. The lobar arteries are the upper, middle and lower lobe pulmonary arteries and the interlobar arteries: "right lower lobe pulmonary artery", "left upper lobe artery", "lower lobe arteries" and "right interlobar artery" all make pe_lobar present. A segmental artery of a lobe ("right lower lobe segmental artery", "segmental branches") is segmental, not lobar; pe_right and pe_left are the sides involved ("bilateral" makes both true), mentioned but not present only when the report explicitly says that side is clear or free of thrombus; pe_multiple is present when the report describes more than one embolus, thrombus or filling defect (plural, "multiple", a count above one), mentioned but not present for "a single" one, and unmentioned for one thrombus extending through several vessels; a clot described as occlusive makes pe_occlusive true and pe_nonocclusive false, a clot described as nonocclusive the reverse, and both are true when both are described.
+- Artery fields, all present only when the report names that artery as involved: pe_main_right and pe_main_left (the right and left main pulmonary arteries); pe_lobar_<lobe> for the right upper, right middle, right lower, left upper and left lower lobe pulmonary arteries ("right lower lobe pulmonary artery", "left upper lobe artery", "lower lobe arteries") and pe_lobar_interlobar_right/left; pe_segmental_<lobe> when segmental arteries of that lobe are involved ("right lower lobe segmental arteries", "segmental branches of both lower lobes"); the lingula is part of the left upper lobe, so a lingular artery sets both pe_segmental_lingula and pe_segmental_left_upper; pe_segment_<lobe>_<segment> only when the report names the segment ("posterior basal segmental artery of the right lower lobe"). Unnamed lobes stay unmentioned ("bilateral lobar clot", "bilateral segmental branches" and "segmental arteries of both lungs" do not name a lobe), while "all lobes" names every lobe including the lingula. A whole side described as clear or patent makes every artery field of that side mentioned but not present.
 - suboptimal_study is present when the report calls the study limited, suboptimal, degraded or nondiagnostic for pulmonary embolism; mentioned but not present when the report speaks of the study's diagnostic quality or says an artifact does not limit evaluation; not mentioned when the report only comments on opacification or artifact without judging the study. An artifact described as mild does not make the study suboptimal. motion_artifact is present when any motion artifact is described. poor_contrast_opacification is present when opacification is called poor, suboptimal or inadequate, and mentioned but not present when it is called adequate, good or excellent.
 - right_heart_strain is present when the report describes right ventricular dilation or enlargement, an RV/LV ratio above 1, septal flattening or bowing, contrast reflux into the IVC, or calls it right heart strain; mentioned but not present when it states no strain or a normal right ventricle. pulmonary_artery_enlargement: the pulmonary artery described as enlarged or dilated. perfusion_defect: a perfusion or iodine-map defect. pulmonary_infarct: an infarct described. lymphadenopathy covers mediastinal, hilar or axillary nodes.
 
-"evidence": one contiguous span copied exactly from the report (max 200 characters, no "..." and no paraphrase). Required when present is true (the phrase describing the finding); when mentioned but not present, the negating phrase; null when not mentioned."""
+"evidence": one contiguous span copied exactly from the report (max 200 characters, no "..." and no paraphrase). Required when present is true (the phrase describing the finding); when mentioned but not present, the negating phrase; null when not mentioned. For an artery field the quote must contain the words that name that lobe, side or segment; a value whose quote does not name it is discarded."""
 
 
 def build_messages(report_text: str, include_schema: bool) -> list[dict]:
@@ -263,7 +297,20 @@ def normalize_finding(data: dict) -> tuple[dict, dict]:
     return data, counts
 
 
-def normalize(data: dict) -> tuple[dict, dict]:
+def sentence_around(quote: str, report_text: str) -> str:
+    """The report sentence that contains the quote (whitespace and case folded), or "" when the quote is not found."""
+    import re
+    folded_report = re.sub(r"\s+", " ", report_text).lower()
+    folded_quote = re.sub(r"\s+", " ", quote).strip().lower()
+    position = folded_report.find(folded_quote) if folded_quote else -1
+    if position == -1:
+        return ""
+    start = max(folded_report.rfind(". ", 0, position), folded_report.rfind("\n", 0, position), folded_report.rfind(": ", 0, position))
+    end = folded_report.find(". ", position)
+    return folded_report[start + 1 if start >= 0 else 0: end if end >= 0 else len(folded_report)]
+
+
+def normalize(data: dict, report_text: str = "") -> tuple[dict, dict]:
     """Repair what constrained decoding cannot enforce, so that only a present finding without a quote triggers a retry.
 
     present implies mentioned; a negation without a quote is treated as not mentioned; a quote on an unmentioned
@@ -278,6 +325,17 @@ def normalize(data: dict) -> tuple[dict, dict]:
         finding = data.get(name)
         if isinstance(finding, dict):
             repair_finding(finding, counts)
+    counts["quote_names_no_lobe"] = 0
+    for name, phrases in QUOTE_MUST_CONTAIN.items():
+        finding = data.get(name)
+        if isinstance(finding, dict) and finding.get("present") is True:
+            quote = (finding.get("evidence") or "").lower()
+            context = quote + " " + sentence_around(quote, report_text)   # the quote itself, plus the sentence it was taken from
+            if not all(any(phrase in context for phrase in group) for group in phrases):
+                finding["mentioned"] = False
+                finding["present"] = False
+                finding["evidence"] = None
+                counts["quote_names_no_lobe"] += 1
     counts["level_made_present"] = 0
     for artery, implied_names in ARTERY_IMPLIES.items():
         finding = data.get(artery)

@@ -98,7 +98,7 @@ def compact_validation_error(error) -> str:
     return "\n".join(lines)
 
 
-def parse_and_validate(schema, content: str, field: str = None):
+def parse_and_validate(schema, content: str, field: str = None, report_text: str = ""):
     """Parse the model output, apply the schema's repairs when it defines normalize(), validate.
     Returns (extraction, repairs); raises ValueError for invalid JSON and ValidationError for schema violations.
     In question mode (field given) the answer is one Finding and only the per-finding repairs apply."""
@@ -112,18 +112,60 @@ def parse_and_validate(schema, content: str, field: str = None):
             data, repairs = schema.normalize_finding(data)
         return schema.Finding.model_validate(data), repairs
     if hasattr(schema, "normalize"):
-        data, repairs = schema.normalize(data)
+        data, repairs = schema.normalize(data, report_text)
     return schema.ReportExtraction.model_validate(data), repairs
 
 
-def reparse(raw: dict, schema) -> dict:
+def reparse_grouped(raw: dict, schema, report_text: str = "") -> dict:
+    """Replay a grouped raw file from its stored attempts: each group's first valid attempt, then the cross-field repairs."""
+    data = {}
+    valid = True
+    for group in schema.CALL_GROUPS:
+        group_attempts = [attempt for attempt in raw["attempts"] if attempt.get("group") == group["name"]]
+        if not group_attempts:
+            for field in group["fields"]:
+                data[field] = {"mentioned": False, "present": False, "evidence": None}
+            continue
+        model_class = schema.group_model(group["name"])
+        answer = None
+        for attempt in group_attempts:
+            try:
+                parsed = json.loads(strip_code_fences(attempt["content"]))
+                parsed, attempt["repairs"] = schema.normalize_group(parsed)
+                answer = model_class.model_validate(parsed).model_dump()
+                attempt["validation_error"] = None
+                break
+            except (json.JSONDecodeError, ValidationError) as error:
+                attempt["validation_error"] = compact_validation_error(error) if isinstance(error, ValidationError) else f"- (root): invalid JSON: {error}"
+        if answer is None:
+            valid = False
+            for field in group["fields"]:
+                data[field] = {"mentioned": False, "present": False, "evidence": None}
+            continue
+        data.update(answer)
+    raw["extraction"] = None
+    raw["repairs"] = {}
+    if valid:
+        data, raw["repairs"] = schema.normalize(data, report_text)
+        try:
+            raw["extraction"] = schema.ReportExtraction.model_validate(data).model_dump()
+        except ValidationError:
+            valid = False
+    raw["valid_json"] = valid
+    raw["reparsed"] = True
+    return raw
+
+
+def reparse(raw: dict, schema, report_text: str = "") -> dict:
     """Re-run parsing, repairs and validation on the stored attempts of a raw file; no model call.
     The first attempt that validates wins. The attempt count stays what it was at run time."""
+    if raw.get("grouped"):
+        return reparse_grouped(raw, schema, report_text)
     raw["valid_json"] = False
     raw["extraction"] = None
     for attempt in raw["attempts"]:
         try:
-            extraction, repairs = parse_and_validate(schema, attempt["content"], raw.get("field"))
+            extraction, repairs = parse_and_validate(schema, attempt["content"], raw.get("field"), report_text)
         except (ValidationError, ValueError) as error:
             attempt["validation_error"] = compact_validation_error(error)
             continue
@@ -194,7 +236,7 @@ def call_model(client: Client, model: str, report_text: str, schema, field: str 
             ]
             continue
         try:
-            extraction, record["repairs"] = parse_and_validate(schema, content, field)
+            extraction, record["repairs"] = parse_and_validate(schema, content, field, report_text)
             attempts.append(record)
             break
         except (ValidationError, ValueError) as error:
@@ -281,7 +323,7 @@ def call_model_grouped(client: Client, model: str, report_text: str, schema) -> 
     repairs = {}
     extraction = None
     if valid:
-        data, repairs = schema.normalize(data)
+        data, repairs = schema.normalize(data, report_text)
         try:
             extraction = schema.ReportExtraction.model_validate(data)
         except ValidationError:
@@ -409,7 +451,7 @@ def run_questions(client: Client, model: str, reports, questions: dict, raw_dir:
                 if path.exists() and not args.force:
                     stored = json.loads(path.read_text(encoding="utf-8"))
                     if args.reparse:
-                        stored = reparse(stored, schema)
+                        stored = reparse(stored, schema, report.report_text)
                         path.write_text(json.dumps(stored, indent=1), encoding="utf-8")
                     if stored.get("field") == field:
                         raw = stored
@@ -506,8 +548,8 @@ def main():
                 note = ""
                 if path.exists() and not args.force:
                     stored = json.loads(path.read_text(encoding="utf-8"))
-                    if args.reparse and not stored.get("grouped"):
-                        stored = reparse(stored, schema)
+                    if args.reparse:
+                        stored = reparse(stored, schema, report.report_text)
                         path.write_text(json.dumps(stored, indent=1), encoding="utf-8")
                     try:
                         row = build_row(report.report_id, model, run, report.report_text, stored, schema)
