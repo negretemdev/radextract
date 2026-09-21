@@ -503,3 +503,7 @@ Projected over all 50: 49 of 50 reports fully right on the embolism fields for e
 | Total | 11 min | 50 min |
 
 For comparison the single-call run on the same laptop stood at 37 and 35 of 50 before the conventions and guard, 39 and 38 after them. The pair disagreed on 8 fields in 5 reports; disagreement exposed all 6 of gemma's wrong cells and both of gpt-oss's, with no shared error. gemma's misses: the "bilat segmental branches" sentence (P013), three of the six lobes under "branches of all lobes" (P027) and one named segment (P047); gpt-oss's: the right middle lobe in "right middle lobe and right lower lobe segmental arteries" (P030) and one named segment (P047). Resolving the pair without a tiebreaker keeps the primary's value on a disputed field and flags the report: with gpt-oss as primary the final file has 48 of 50 reports fully right on the embolism fields (27 of 29 positives) with 5 reports flagged; with gemma as primary 47 of 50 (26 of 29), 5 flagged. No wrong report goes unflagged in either order.
+
+### Fine mode, checked on the cloud
+
+gemma4:31b-cloud on the 26 hard reports, `--grouped --fine` versus `--grouped`: no cell changed in either direction, 25 of 26 reports fully right on the embolism fields both ways (the P013 "bilat segmental branches" sentence remains), 26 of 26 valid, 21 calls per report against 6. The strong model had nothing to gain; the mode exists for the laptop gemma4:26b, whose remaining misses are all in the per-lobe and per-segment questions.
