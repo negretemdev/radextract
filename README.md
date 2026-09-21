@@ -507,3 +507,15 @@ For comparison the single-call run on the same laptop stood at 37 and 35 of 50 b
 ### Fine mode, checked on the cloud
 
 gemma4:31b-cloud on the 26 hard reports, `--grouped --fine` versus `--grouped`: no cell changed in either direction, 25 of 26 reports fully right on the embolism fields both ways (the P013 "bilat segmental branches" sentence remains), 26 of 26 valid, 21 calls per report against 6. The strong model had nothing to gain; the mode exists for the laptop gemma4:26b, whose remaining misses are all in the per-lobe and per-segment questions.
+
+### Fine mode on the laptop gemma4:26b: rejected
+
+`uv run benchmark.py --schema ctpa --models gemma4:26b --grouped --fine`, 50 reports, 50/50 valid, 13.8 calls per report, 19 s median (14 min total).
+
+| gemma4:26b | grouped | grouped + fine |
+|---|---|---|
+| Every PE field right | 47/50 | 44/50 |
+| Among the 29 PE-positive | 26/29 | 23/29 |
+| Cells fixed / newly wrong / still wrong | | 2 / 10 / 3 |
+
+Asked about one artery at a time, the 26B loses the context that the group call gave it: it marked segmental fields present for lobar arteries ("left lower lobe pulmonary artery", "left upper and lower lobe arteries" both became segmental involvement), dropped two named segments the group call had caught (P024, P042), and missed more of the lobes under "branches of all lobes". The two cells it fixed (the P013 phrase, one named segment) do not pay for that. The flag stays in the code, documented as tested and rejected; the state before it is the tag `grouped-baseline`, and grouped mode without `--fine` remains the recommended way to run gemma.
