@@ -73,8 +73,8 @@ def is_cloud_model(model: str) -> bool:
 
 
 def uses_constrained_format(model: str) -> bool:
-    if is_cloud_model(model):
-        return False
+    if is_cloud_model(model) or model == APPLE_TAG:
+        return False   # the Apple helper takes plain prompts: schema in the prompt, JSON validated here
     tag, _ = split_model_tag(model)
     return not tag.lower().startswith(PROMPT_ONLY_JSON_MODEL_PREFIXES)
 
@@ -179,8 +179,35 @@ def reparse(raw: dict, schema, report_text: str = "") -> dict:
     return raw
 
 
+APPLE_TAG = "apple:on-device"   # Apple's on-device Foundation Model through apple/apple_fm (Swift); nothing leaves the machine
+APPLE_HELPER = Path(__file__).resolve().parent / "apple" / "apple_fm"
+
+
+class AppleReply:
+    """Shape of an Ollama chat response, enough for call_model and the grouped/fine paths."""
+    def __init__(self, text: str):
+        self.message = type("Message", (), {"content": text, "thinking": None})()
+        self.done_reason = "stop"
+        self.prompt_eval_count = None
+        self.eval_count = None
+
+
+def apple_chat(messages) -> AppleReply:
+    """Run the on-device Apple model: system prompt = every system message, prompt = the rest of the conversation."""
+    import subprocess
+    system = "\n\n".join(message["content"] for message in messages if message["role"] == "system")
+    prompt = "\n\n".join(message["content"] for message in messages if message["role"] != "system")
+    completed = subprocess.run([str(APPLE_HELPER)], input=json.dumps({"system": system, "prompt": prompt}), capture_output=True, text=True)
+    reply = json.loads(completed.stdout.strip().splitlines()[-1]) if completed.stdout.strip() else {"error": completed.stderr.strip()[:300]}
+    if reply.get("error"):
+        raise ResponseError(f"apple on-device model: {reply['error']}", 500 if "unavailable" not in reply["error"] else 503)
+    return AppleReply(reply.get("text") or "")
+
+
 def chat_with_transient_retries(client: Client, tag: str, messages, response_format, think, options):
     """One chat call, retried after a pause when the server (not the model) fails: overloaded, 5xx, connection errors."""
+    if tag == APPLE_TAG:
+        return apple_chat(messages)
     for transient_attempt in range(1, TRANSIENT_RETRIES + 1):
         try:
             return client.chat(model=tag, messages=messages, format=response_format, think=think, options=options)
@@ -584,6 +611,10 @@ def main():
         tag, think_requested = split_model_tag(model)
         if think_requested and tag.lower().startswith("gpt-oss"):
             sys.exit(f"ERROR: {model!r}: gpt-oss thinking is fixed at medium on this machine and cannot be changed.")
+        if tag == APPLE_TAG:
+            if not APPLE_HELPER.exists():
+                sys.exit(f"ERROR: {APPLE_HELPER} not built. On a Mac with Apple Intelligence: cd apple && swiftc -O -o apple_fm apple_fm.swift")
+            continue
         try:
             client.show(tag)
         except ResponseError as error:
