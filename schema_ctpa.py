@@ -217,10 +217,13 @@ for name in FINDING_NAMES:
         QUOTE_MUST_CONTAIN[name] = [LOBE_PHRASES[SEGMENT_LOBES[lobe]]] + SEGMENT_PHRASES[segment]
 
 
-def question_messages(report_text: str, field: str, include_schema: bool) -> list[dict]:
-    """Chat messages asking about one field only; the answer is a single Finding object."""
+def question_messages(report_text: str, field: str, include_schema: bool, context: str = "") -> list[dict]:
+    """Chat messages asking about one field only; the answer is a single Finding object.
+    context: facts already extracted from the same report and the sibling fields answered separately (fine mode)."""
     system_prompt = (EXTRACTION_PROMPT + f"\n\nAnswer for exactly one field, {field}: {FIELD_DEFINITIONS[field]}. "
                      "Return one JSON object with the keys mentioned, present and evidence for this field only.")
+    if context:
+        system_prompt += "\n\n" + context
     if include_schema:
         system_prompt += "\n\nThe JSON object must match this JSON schema exactly:\n" + json.dumps(Finding.model_json_schema())
     return [
@@ -400,6 +403,28 @@ SEGMENTS_BY_LOBE = {
     "pe_segmental_left_lower": ["pe_segment_lll_superior", "pe_segment_lll_anteromedial_basal", "pe_segment_lll_lateral_basal", "pe_segment_lll_posterior_basal"],
 }
 FINE_GROUPS = {"lobar", "segmental"}   # asked one field per call in fine mode; the named-segment groups are asked per lobe found
+
+
+def fine_context(data: dict, field: str, group_fields: list) -> str:
+    """What a single-field question needs to know to allocate a clot to the right level: the levels and arteries already
+    found in this report, and the sibling fields that are answered in their own questions."""
+    def state(name):
+        finding = data.get(name) or {}
+        return "present" if finding.get("present") else ("negated" if finding.get("mentioned") else "not mentioned")
+    lines = ["Already extracted from this report, for orientation:"]
+    lines.append("- levels: " + ", ".join(f"{name} {state(name)}" for name in ["pe_main", "pe_lobar", "pe_segmental", "pe_subsegmental"]))
+    lines.append("- sides: " + ", ".join(f"{name} {state(name)}" for name in ["pe_right", "pe_left"]))
+    found_lobar = [name for name in FINDING_NAMES if name.startswith("pe_lobar_") and (data.get(name) or {}).get("present")]
+    found_segmental = [name for name in FINDING_NAMES if name.startswith("pe_segmental_") and (data.get(name) or {}).get("present")]
+    if field.startswith("pe_segmental_") or field.startswith("pe_segment_"):
+        lines.append("- lobar arteries found present: " + (", ".join(found_lobar) if found_lobar else "none") + ". A lobar artery is not a segmental branch: clot described in a lobe's pulmonary artery itself belongs to the lobar field, not to this field, unless its segmental branches are named too.")
+    if field.startswith("pe_segment_"):
+        lines.append("- segmental involvement found by lobe: " + (", ".join(found_segmental) if found_segmental else "none") + ". Answer present only if this exact segment is named.")
+    if field.startswith("pe_lobar_"):
+        lines.append("- a segmental artery of this lobe (\"" + FIELD_DEFINITIONS[field].split(" in the ")[1].split(" pulmonary")[0] + " segmental arteries\") belongs to the segmental field, not here.")
+    siblings = [name for name in group_fields if name != field]
+    lines.append("Answered in separate questions, do not put their findings here: " + "; ".join(f"{name} = {FIELD_DEFINITIONS[name]}" for name in siblings))
+    return "\n".join(lines)
 
 
 def group_model(group_name: str):

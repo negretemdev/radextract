@@ -262,10 +262,10 @@ def call_model(client: Client, model: str, report_text: str, schema, field: str 
     }
 
 
-def ask_one(client: Client, tag: str, think, options, constrained: bool, schema, report_text: str, field: str, attempts: list) -> dict:
+def ask_one(client: Client, tag: str, think, options, constrained: bool, schema, report_text: str, field: str, attempts: list, context: str = "") -> dict:
     """One single-field question (fine mode); returns the Finding dict or None after the retries."""
     response_format = schema.Finding.model_json_schema() if constrained else None
-    messages = schema.question_messages(report_text, field, include_schema=not constrained)
+    messages = schema.question_messages(report_text, field, include_schema=not constrained, context=context)
     for attempt in range(1, MAX_RETRIES + 2):
         attempt_started = time.perf_counter()
         response = chat_with_transient_retries(client, tag, messages, response_format, think, options)
@@ -317,7 +317,8 @@ def call_model_grouped(client: Client, model: str, report_text: str, schema, fin
                 data[field] = {"mentioned": False, "present": False, "evidence": None}
             asked = failed = 0
             for field in fields:
-                answer = ask_one(client, tag, think, options, constrained, schema, report_text, field, attempts)
+                context = schema.fine_context(data, field, group["fields"])
+                answer = ask_one(client, tag, think, options, constrained, schema, report_text, field, attempts, context)
                 asked += 1
                 if answer is None:
                     failed += 1
