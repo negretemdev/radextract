@@ -390,6 +390,18 @@ CALL_GROUPS = [
 assert sorted(name for group in CALL_GROUPS for name in group["fields"]) == sorted(FINDING_NAMES)
 
 
+# named segments of each lobe, for the fine mode: they are asked one by one only when that lobe's segmental field is present
+SEGMENTS_BY_LOBE = {
+    "pe_segmental_right_upper": ["pe_segment_rul_apical", "pe_segment_rul_anterior", "pe_segment_rul_posterior"],
+    "pe_segmental_right_middle": ["pe_segment_rml_medial", "pe_segment_rml_lateral"],
+    "pe_segmental_right_lower": ["pe_segment_rll_superior", "pe_segment_rll_medial_basal", "pe_segment_rll_anterior_basal", "pe_segment_rll_lateral_basal", "pe_segment_rll_posterior_basal"],
+    "pe_segmental_left_upper": ["pe_segment_lul_apicoposterior", "pe_segment_lul_anterior"],
+    "pe_segmental_lingula": ["pe_segment_lingula_superior", "pe_segment_lingula_inferior"],
+    "pe_segmental_left_lower": ["pe_segment_lll_superior", "pe_segment_lll_anteromedial_basal", "pe_segment_lll_lateral_basal", "pe_segment_lll_posterior_basal"],
+}
+FINE_GROUPS = {"lobar", "segmental"}   # asked one field per call in fine mode; the named-segment groups are asked per lobe found
+
+
 def group_model(group_name: str):
     """A Pydantic model with only that group's fields, for constrained decoding and validation."""
     from pydantic import create_model
