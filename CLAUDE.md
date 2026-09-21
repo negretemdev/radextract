@@ -37,6 +37,9 @@ Real reports must never reach a cloud model; `--allow-cloud` exists only for the
 - Tiebreakers: mistral-small3.2:24b spills (52 s/report) and was wrong on PE location (10% of positives fully right on the full form); qwen3.5:9b and mistral-nemo failed validation constantly under the old validators; a third model re-extracting whole reports never beat gemma alone. Question mode (only the disputed fields) works: 93% right on the hardest 56 fields with the cloud gemma.
 - Candidate models that fit 16 GB at q4: dense <= ~13 GB (qwen3.5:9b 6.6 GB, mistral-nemo 7 GB, gemma4:12b 7.6 GB); mistral-small 15 GB borderline; 27B dense models spill and crawl; MoE (gemma4:26b 19 GB) spills gracefully.
 
+- Apple on-device Foundation Model (apple/apple_fm.swift, tag `apple:on-device`, guided generation, runs on the Mac): refuses 27/50 CTPA reports as sensitive content even with the permissive guardrail and minimal instructions. Unusable; helper kept as a record.
+- Fine mode with error-driven instructions ("mistakes to avoid" per lobar / per-lobe segmental / named-segment question) is pushed; the user tests it locally on gemma4:26b (`--grouped --fine --force`). Do not run more cloud validations unless asked: they take an hour and the user prefers local runs.
+
 ## Laptop commands
 - Pair, grouped (recommended when an hour per 50 reports is fine): `uv run benchmark.py --schema ctpa --models gemma4:26b gpt-oss:20b --grouped`
 - gemma alone, grouped (11 min per 50, no flags): `uv run benchmark.py --schema ctpa --models gemma4:26b --grouped`

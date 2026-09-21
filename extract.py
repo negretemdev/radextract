@@ -73,8 +73,8 @@ def is_cloud_model(model: str) -> bool:
 
 
 def uses_constrained_format(model: str) -> bool:
-    if is_cloud_model(model) or model == APPLE_TAG:
-        return False   # the Apple helper takes plain prompts: schema in the prompt, JSON validated here
+    if is_cloud_model(model):
+        return False
     tag, _ = split_model_tag(model)
     return not tag.lower().startswith(PROMPT_ONLY_JSON_MODEL_PREFIXES)
 
@@ -192,22 +192,37 @@ class AppleReply:
         self.eval_count = None
 
 
-def apple_chat(messages) -> AppleReply:
-    """Run the on-device Apple model: system prompt = every system message, prompt = the rest of the conversation."""
+def apple_chat(messages, response_format=None) -> AppleReply:
+    """Run the on-device Apple model: system prompt = every system message, prompt = the rest of the conversation.
+    A JSON schema for a group of Finding objects (or one Finding) is turned into guided generation in the helper."""
     import subprocess
     system = "\n\n".join(message["content"] for message in messages if message["role"] == "system")
     prompt = "\n\n".join(message["content"] for message in messages if message["role"] != "system")
-    completed = subprocess.run([str(APPLE_HELPER)], input=json.dumps({"system": system, "prompt": prompt}), capture_output=True, text=True)
+    request = {"system": system, "prompt": prompt}
+    if response_format:
+        properties = response_format.get("properties", {})
+        if set(properties) == {"mentioned", "present", "evidence"}:
+            request["single_finding"] = True
+        elif properties and all("$ref" in value for value in properties.values()):
+            request["finding_fields"] = list(properties)
+    completed = subprocess.run([str(APPLE_HELPER)], input=json.dumps(request), capture_output=True, text=True)
     reply = json.loads(completed.stdout.strip().splitlines()[-1]) if completed.stdout.strip() else {"error": completed.stderr.strip()[:300]}
-    if reply.get("error"):
-        raise ResponseError(f"apple on-device model: {reply['error']}", 500 if "unavailable" not in reply["error"] else 503)
-    return AppleReply(reply.get("text") or "")
+    if reply.get("error") and "unavailable" in reply["error"]:
+        raise ResponseError(f"apple on-device model: {reply['error']}", 503)
+    if reply.get("error"):   # a guardrail refusal or generation error: returned as empty content, so it fails validation like a bad answer
+        reply_text = ""
+        reply_error = reply["error"]
+    else:
+        reply_text, reply_error = reply.get("text") or "", None
+    answer = AppleReply(reply_text)
+    answer.done_reason = "refused" if reply_error else "stop"
+    return answer
 
 
 def chat_with_transient_retries(client: Client, tag: str, messages, response_format, think, options):
     """One chat call, retried after a pause when the server (not the model) fails: overloaded, 5xx, connection errors."""
     if tag == APPLE_TAG:
-        return apple_chat(messages)
+        return apple_chat(messages, response_format)
     for transient_attempt in range(1, TRANSIENT_RETRIES + 1):
         try:
             return client.chat(model=tag, messages=messages, format=response_format, think=think, options=options)
