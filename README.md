@@ -519,3 +519,7 @@ gemma4:31b-cloud on the 26 hard reports, `--grouped --fine` versus `--grouped`: 
 | Cells fixed / newly wrong / still wrong | | 2 / 10 / 3 |
 
 Asked about one artery at a time, the 26B loses the context that the group call gave it: it marked segmental fields present for lobar arteries ("left lower lobe pulmonary artery", "left upper and lower lobe arteries" both became segmental involvement), dropped two named segments the group call had caught (P024, P042), and missed more of the lobes under "branches of all lobes". The two cells it fixed (the P013 phrase, one named segment) do not pay for that. The flag stays in the code, documented as tested and rejected; the state before it is the tag `grouped-baseline`, and grouped mode without `--fine` remains the recommended way to run gemma.
+
+### Fine mode with context: also rejected
+
+Each single-field question was given the levels and sides already found, the lobar arteries found present, an explicit "a lobar artery is not a segmental branch" line and the sibling fields' definitions. Cloud check on the 26 hard reports: gemma4:31b-cloud unchanged (25/26 both ways); gpt-oss:20b-cloud, the proxy for a weaker model, went from 25/26 to 24/26 with 3 new wrong cells and none fixed, the same allocation slips as before (subsegmental branches of a lobe read as segmental, "right middle lobe" read as lobar). The isolated-question format itself is what loses the allocation, not the missing context. Grouped mode without `--fine` stays the way to run the CTPA schema; the flag remains only as a record.
