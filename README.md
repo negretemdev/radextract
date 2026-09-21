@@ -110,7 +110,7 @@ It prints, per retried or failed call, each attempt's `done_reason`, thinking le
 | `--questions` | off | CSV with `report_id` and `disputed_fields` (from `compare.py`): ask only those fields, one call each; raw files are `raw/<schema>/<model>_<id>_<run>_q_<field>.json`; `attempts` and `latency_s` are summed over the questions |
 | `--allow-cloud` | off | permit `*-cloud` / `*:cloud` tags (synthetic data only) |
 
-Resume: a call is skipped when `raw/{schema}/{model}_{report_id}_{run}.json` already exists, and its row is rebuilt from that file (the evidence check runs again at rebuild time). Delete a raw file or pass `--force` to redo a call.
+Resume: a call is skipped when `raw/{schema}/{model}_{report_id}_{run}.json` already exists, and its row is rebuilt from that file (the evidence check runs again at rebuild time). Delete a raw file or pass `--force` to redo a call. Every results row says where it came from: `source` is `called`, `resumed` or `reparsed`, and `code_version` is the git commit of the code that produced it (a trailing `+` means uncommitted changes). When a run resumes every report without calling the model, the console ends with a WARNING that nothing was re-run: a results file with the same latencies as the previous one means exactly that, not a new measurement.
 
 ### 16 GB VRAM notes
 
@@ -138,7 +138,7 @@ Verified here with ollama 0.6.2 (Python package) against Ollama 0.31.1: `Client.
 
 ## Output columns
 
-`results.csv`: `report_id, model, run, valid_json, attempts, latency_s`, then for each finding `{name}_status, {name}_evidence, {name}_evidence_ok, {name}_section`, then `nodule_count`, `largest_nodule_{size_mm, laterality, lobe, attenuation, calcified, margins, evidence, evidence_ok, section}` and `follow_up_{recommended, modality, interval_months, evidence, evidence_ok, section}`. 102 columns.
+`results.csv`: `report_id, model, run, valid_json, attempts, latency_s, source, code_version`, then for each finding `{name}_status, {name}_evidence, {name}_evidence_ok, {name}_section`, then `nodule_count`, `largest_nodule_{size_mm, laterality, lobe, attenuation, calcified, margins, evidence, evidence_ok, section}` and `follow_up_{recommended, modality, interval_months, evidence, evidence_ok, section}`. 102 columns.
 
 - `evidence_ok` (0/1) is computed by the script: whitespace collapsed and case folded, the quote must be a substring of the report. It is blank when there is no quote (`not_mentioned`) or the row is invalid.
 - `section` is `findings`, `impression` or `other`, by the report's own `FINDINGS:` / `IMPRESSION:` headers and the character offset of the quote. Narrative reports without headers and anything before `FINDINGS:` (EXAM, INDICATION, TECHNIQUE, COMPARISON) are `other`, so a quote lifted from the indication shows up as `other`.

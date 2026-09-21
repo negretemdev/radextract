@@ -10,6 +10,7 @@ import argparse
 import importlib
 import json
 import re
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -195,7 +196,6 @@ class AppleReply:
 def apple_chat(messages, response_format=None) -> AppleReply:
     """Run the on-device Apple model: system prompt = every system message, prompt = the rest of the conversation.
     A JSON schema for a group of Finding objects (or one Finding) is turned into guided generation in the helper."""
-    import subprocess
     system = "\n\n".join(message["content"] for message in messages if message["role"] == "system")
     prompt = "\n\n".join(message["content"] for message in messages if message["role"] != "system")
     request = {"system": system, "prompt": prompt}
@@ -473,8 +473,19 @@ def check_evidence(evidence, report_text: str, normalized_report: str, offsets: 
     return 1, section_at(offsets[position], report_text)
 
 
+def code_version() -> str:
+    """Short git commit of the code that produced a row; a trailing '+' means the working tree had uncommitted changes."""
+    try:
+        here = Path(__file__).resolve().parent
+        commit = subprocess.run(["git", "rev-parse", "--short", "HEAD"], capture_output=True, text=True, check=True, cwd=here).stdout.strip()
+        dirty = subprocess.run(["git", "status", "--porcelain", "--untracked-files=no"], capture_output=True, text=True, check=True, cwd=here).stdout.strip()
+        return commit + ("+" if dirty else "")
+    except Exception:
+        return ""
+
+
 def result_columns(schema) -> list[str]:
-    columns = ["report_id", "model", "run", "valid_json", "attempts", "latency_s"]
+    columns = ["report_id", "model", "run", "valid_json", "attempts", "latency_s", "source", "code_version"]
     for column in schema.FLAT_COLUMNS:
         columns.append(column)
         if column.endswith("_evidence"):
@@ -543,6 +554,7 @@ def build_question_row(report_id: str, model: str, run: int, report_text: str, r
 def run_questions(client: Client, model: str, reports, questions: dict, raw_dir: Path, schema, args) -> list[dict]:
     """Question mode: for each report, ask only the listed fields, one call each, and build one row per report."""
     safe_model = re.sub(r"[^A-Za-z0-9.-]+", "_", model)
+    version = code_version()
     rows = []
     progress = tqdm(total=len(reports) * args.runs, desc=model, unit="report", dynamic_ncols=True)
     for report_number, report in enumerate(reports.itertuples(index=False), start=1):
@@ -565,6 +577,8 @@ def run_questions(client: Client, model: str, reports, questions: dict, raw_dir:
                     fresh += 1
                 raws[field] = raw
             row = build_question_row(report.report_id, model, run, report.report_text, raws, schema)
+            row["source"] = "called" if fresh == len(raws) else ("reparsed" if args.reparse else "resumed") if fresh == 0 else "mixed"
+            row["code_version"] = version
             rows.append(row)
             retries = sum(1 for raw in raws.values() for attempt in raw["attempts"] if attempt["validation_error"])
             failed = [field for field, raw in raws.items() if not raw["valid_json"]]
@@ -642,7 +656,9 @@ def main():
         sys.exit(f"ERROR: schema {args.schema} does not define CALL_GROUPS; --grouped is not available for it")
     raw_dir.mkdir(parents=True, exist_ok=True)
     rows = []
+    version = code_version()
     for model in args.models:
+        called = resumed = 0
         print(f"== {model}: schema={args.schema}, think={thinking_for(model)!r}, num_ctx={options_for(model)['num_ctx']}, "
               f"constrained_format={uses_constrained_format(model)}" + (", question mode" if questions else "") + (", grouped calls" if args.grouped else "") + (", fine artery questions" if args.fine else ""), flush=True)
         if questions is not None:
@@ -657,6 +673,7 @@ def main():
                     path = path.with_name(path.stem + ("_fine.json" if args.fine else "_grouped.json"))
                 raw = None
                 note = ""
+                source = "called"
                 if path.exists() and not args.force:
                     stored = json.loads(path.read_text(encoding="utf-8"))
                     if args.reparse:
@@ -665,7 +682,9 @@ def main():
                     try:
                         row = build_row(report.report_id, model, run, report.report_text, stored, schema)
                         raw = stored
-                        note = "reparsed from raw file" if args.reparse else "resumed from raw file"
+                        source = "reparsed" if args.reparse else "resumed"
+                        note = f"{source} from raw file"
+                        resumed += 1
                     except ValidationError:
                         note = "(raw file was from an older schema, re-run)"
                 if raw is None:
@@ -675,12 +694,22 @@ def main():
                         raw = call_model(client, model, report.report_text, schema)
                     path.write_text(json.dumps(raw, indent=1), encoding="utf-8")
                     row = build_row(report.report_id, model, run, report.report_text, raw, schema)
+                    called += 1
+                row["source"] = source
+                row["code_version"] = version
                 rows.append(row)
                 tqdm.write(f"[{model}] {report.report_id} run {run}: {describe(raw)} {note}")
                 progress.update(1)
                 pd.DataFrame(rows, columns=result_columns(schema)).to_csv(args.output, index=False, encoding="utf-8")
         progress.close()
-    print(f"Wrote {len(rows)} rows to {args.output}")
+        if resumed and not args.reparse:
+            if called == 0:
+                print(f"WARNING {model}: nothing was re-run. All {resumed} reports came from raw files of an earlier run, so the "
+                      f"results are those of that run. Pass --force to call the model again.", flush=True)
+            else:
+                print(f"NOTE {model}: {resumed} reports resumed from raw files of an earlier run, {called} called the model now. "
+                      f"Pass --force to re-run all of them.", flush=True)
+    print(f"Wrote {len(rows)} rows to {args.output} (code_version {version or 'unknown'})")
 
 
 if __name__ == "__main__":

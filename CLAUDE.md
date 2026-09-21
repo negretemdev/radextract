@@ -39,8 +39,10 @@ Real reports must never reach a cloud model; `--allow-cloud` exists only for the
 
 - Apple on-device Foundation Model (apple/apple_fm.swift, tag `apple:on-device`, guided generation, runs on the Mac): refuses 27/50 CTPA reports as sensitive content even with the permissive guardrail and minimal instructions. Unusable; helper kept as a record.
 - Fine mode with error-driven instructions ("mistakes to avoid" per lobar / per-lobe segmental / named-segment question) is pushed; the user tests it locally on gemma4:26b (`--grouped --fine --force`). Do not run more cloud validations unless asked: they take an hour and the user prefers local runs.
+- 2026-09-21 evening: the file sent as the result of that test was byte-identical to the earlier plain fine-mode file (same latencies), so the model was never called; the error-driven fine prompt is still unmeasured. Results rows now carry `source` (called / resumed / reparsed) and `code_version` (git commit): check them first when a file arrives, and a run that resumes everything prints a WARNING.
 
 ## Laptop commands
 - Pair, grouped (recommended when an hour per 50 reports is fine): `uv run benchmark.py --schema ctpa --models gemma4:26b gpt-oss:20b --grouped`
 - gemma alone, grouped (11 min per 50, no flags): `uv run benchmark.py --schema ctpa --models gemma4:26b --grouped`
+- Fine-mode retry, gemma alone (14 min per 50): `git pull` then `uv run benchmark.py --schema ctpa --models gemma4:26b --grouped --fine --force`; without `--force` the old `_fine.json` raw files are resumed and nothing runs.
 - The file to read is `final_ctpa.csv`; send `results_ctpa.csv` here for scoring.
