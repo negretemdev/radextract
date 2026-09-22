@@ -568,3 +568,20 @@ Commands:
 - Mac, synthetic reports only: `uv run decide.py --models typesafe-ai/jev --methods jev jev-rules --allow-cloud`, with `AI_GATEWAY_API_KEY=...` in `.env` (git ignores it). Vercel refuses the request with HTTP 403 `customer_verification_required` until the Vercel team has a card on file, even while Jev is free (until 2026-09-25).
 
 Checked so far: only the plumbing, against fake Ollama and gateway servers that answer from the ground truth. All four methods scored 50/50 there, and the 429 retry, the fallback for a letter that is not the first token, the corrective JSON retry, the cloud guard and the missing-key, wrong-key and old-Ollama messages all ran. No real model has answered yet.
+
+### Jev on the 50 synthetic reports (2026-09-22, `jev`: each question with the rules of its family)
+
+One request per call group (the gateway answered all 64 questions with their rules with HTTP 503 every time, and roughly one request in seven of any size with a transient 503 or 429; the run took about 25 minutes because of the retries, not the model, which answers in under half a second).
+
+| decision rule | reports with every PE field right | PE-positive reports right | wrong PE cells |
+|---|---|---|---|
+| most probable of the three answers | 30/50 | 9/29 | 35 |
+| present only when P(present) >= 0.8 | 44/50 | 23/29 | 10 |
+| present only when P(present) >= 0.9 | 45/50 | 24/29 | 9 |
+| present only when P(present) >= 0.95 | 44/50 | 23/29 | 18 |
+| for comparison: gemma4:26b grouped (laptop) | 47/50 | 26/29 | 5 |
+
+- 19 of the 35 wrong cells under the most-probable rule are one field: `pe_subsegmental` called present, at P between 0.47 and 0.85, in reports that never say subsegmental. The five true subsegmental reports got P = 1.0. The probabilities carry the signal that the most-probable rule throws away.
+- The thresholds were compared after seeing these results, so 44 to 45 is Jev's level on this set, not a tuned score to expect elsewhere.
+- As a review flag, "any embolism field with 0.2 < P(present) < 0.8" catches every wrong report under the 0.9 rule but flags 23 of 50 reports; the gemma pair's disagreement flagged 5 with none missed.
+- Jev is a cloud model: whatever it scores, it can never read the real reports.
