@@ -4,7 +4,8 @@ not_mentioned), answered with probabilities instead of generated text and quotes
 Methods; the model column of the results says which one produced a row:
 - jev              TypeSafe AI's Jev through Vercel AI Gateway. Cloud: synthetic reports only, needs --allow-cloud and
                    AI_GATEWAY_API_KEY (in the environment, or a line AI_GATEWAY_API_KEY=... in a .env file in this folder,
-                   which git ignores). One request per report with every question; Jev scores each question on its own.
+                   which git ignores). One request per call group (the gateway refuses all 64 questions with their rules
+                   in one request); Jev scores each question on its own, so the batching does not change the answers.
                    Jev sees no rulebook, so each question carries the rules of its family (arteries, levels, lungs...).
 - jev-rules        the rulebook written before the report in the state, and short questions as for the local methods.
 - readout          a local Ollama model, one question per call, answered by reading the probabilities of the letters A, B
@@ -178,7 +179,6 @@ def normalized(probabilities: dict) -> dict:
 
 # ---- Jev through Vercel AI Gateway ----
 JEV_KEY = None
-JEV_CHUNK = None   # set when the gateway refuses 64 questions in one request
 
 
 def load_key() -> str:
@@ -196,16 +196,18 @@ def load_key() -> str:
 
 
 def jev_answers(state: str, fields: list, family_rules: bool, log: list) -> dict:
-    global JEV_CHUNK
-    if JEV_CHUNK and len(fields) > JEV_CHUNK:
+    """One request per call group. On 2026-09-22 the gateway answered 64 questions with their rules (about 17k input
+    tokens) with HTTP 503 every time, and about one request in seven of any size with a transient 503. Jev scores every
+    question on its own, so batching changes the transport, not the answers."""
+    if len(fields) > 20:
         answers = {}
-        for start in range(0, len(fields), JEV_CHUNK):
-            answers.update(jev_answers(state, fields[start:start + JEV_CHUNK], family_rules, log))
+        for group in schema.CALL_GROUPS:
+            answers.update(jev_answers(state, [field for field in group["fields"] if field in fields], family_rules, log))
         return answers
     body = {"model": JEV_MODEL, "state": state,
             "questions": {field: {"type": "choice", "instructions": instruction(field, family_rules), "criteria": CRITERIA}
                           for field in fields}}
-    for attempt in range(1, 6):
+    for attempt in range(1, 8):
         started = time.perf_counter()
         request = urllib.request.Request(JEV_URL, data=json.dumps(body).encode("utf-8"), method="POST",
                                          headers={"Authorization": f"Bearer {JEV_KEY}", "Content-Type": "application/json"})
@@ -216,20 +218,17 @@ def jev_answers(state: str, fields: list, family_rules: bool, log: list) -> dict
             text = error.read().decode("utf-8", "replace")
             log.append({"call": "jev", "attempt": attempt, "status": error.code, "error": text[:500],
                         "latency_s": round(time.perf_counter() - started, 2)})
-            if error.code in (408, 429, 500, 502, 503, 504) and attempt < 5:
-                time.sleep(min(60, 5 * 2 ** (attempt - 1)))
+            if error.code in (408, 429, 500, 502, 503, 504) and attempt < 7:
+                time.sleep(min(30, 2 ** attempt))
                 continue
             if "customer_verification_required" in text:
                 sys.exit("ERROR: Vercel refused the request (customer_verification_required): the Vercel team needs a card on "
                          "file before AI Gateway serves Jev, even while it is free. Add one in the Vercel dashboard and re-run.")
-            if error.code == 400 and len(fields) > 16 and "question" in text.lower():
-                JEV_CHUNK = 16
-                return jev_answers(state, fields, family_rules, log)
             sys.exit(f"ERROR: Jev request failed with HTTP {error.code}: {text[:500]}")
         except (urllib.error.URLError, TimeoutError) as error:
             log.append({"call": "jev", "attempt": attempt, "error": str(error), "latency_s": round(time.perf_counter() - started, 2)})
-            if attempt < 5:
-                time.sleep(min(60, 5 * 2 ** (attempt - 1)))
+            if attempt < 7:
+                time.sleep(min(30, 2 ** attempt))
                 continue
             sys.exit(f"ERROR: cannot reach {JEV_URL}: {error}")
         log.append({"call": "jev", "attempt": attempt, "status": 200, "questions": len(fields), "usage": reply.get("usage"),
