@@ -173,10 +173,14 @@ FIELD_DEFINITIONS = {
     "pe_lobar_interlobar_right": "embolus in the right interlobar pulmonary artery",
     "pe_lobar_interlobar_left": "embolus in the left interlobar pulmonary artery",
 }
+# the collective phrases that name each lobe (until 2026-09-22 every lobe listed the lower-lobe phrases, wrong for the others)
+COVERING_PHRASES = {"right_upper": "'both upper lobes', 'bilateral upper' or 'all lobes'", "left_upper": "'both upper lobes', 'bilateral upper' or 'all lobes'",
+                    "right_lower": "'both lower lobes', 'bilateral lower' or 'all lobes'", "left_lower": "'both lower lobes', 'bilateral lower' or 'all lobes'",
+                    "right_middle": "'all lobes'", "lingula": "'all lobes'"}
 for key, words in LOBE_WORDS.items():
     if key != "lingula":
         FIELD_DEFINITIONS[f"pe_lobar_{key}"] = f"embolus in the {words} pulmonary artery itself (the lobar artery, not its segmental branches)"
-    FIELD_DEFINITIONS[f"pe_segmental_{key}"] = f"embolus in a segmental artery or segmental branch of the {words} (the lobe must be named by the report, directly or as 'both lower lobes', 'bilateral lower' or 'all lobes'; a subsegmental branch of the lobe does not count)"
+    FIELD_DEFINITIONS[f"pe_segmental_{key}"] = f"embolus in a segmental artery or segmental branch of the {words} (the lobe must be named by the report, directly or as {COVERING_PHRASES[key]}; a subsegmental branch of the lobe does not count)"
 FIELD_DEFINITIONS["pe_segmental_left_upper"] += "; the lingular segments belong to the left upper lobe, so a lingular artery counts here too"
 for name in FINDING_NAMES:
     if name.startswith("pe_segment_"):
