@@ -581,6 +581,18 @@ One request per call group (the gateway answered all 64 questions with their rul
 | present only when P(present) >= 0.95 | 44/50 | 23/29 | 18 |
 | for comparison: gemma4:26b grouped (laptop) | 47/50 | 26/29 | 5 |
 
+`jev-rules` (the legend and the full rulebook before the report in the state, short questions as for the local methods), same 50 reports, no threshold needed:
+
+| decision rule | reports with every PE field right | PE-positive reports right | wrong PE cells |
+|---|---|---|---|
+| most probable of the three answers | 47/50 | 26/29 | 6 |
+| present only when P(present) >= 0.9 | 46/50 | 25/29 | 7 |
+
+- Its misses are P003 (three artery cells), P013 (the "bilat segmental branches" sentence, also missed by grouped gemma) and P042 (a subsegmental embolus at P = 0.54). Grouped gemma misses P013, P027 and P047.
+- Every miss has an embolism field with 0.2 < P(present) < 0.8; that band flags 8 of 50 reports.
+- Grouped gemma and Jev with the rulebook disagree on 5 reports, and those 5 contain every error of both, the same pattern as the gemma and gpt-oss pair.
+- Where the rules sit decides the result: the same model went from 30/50 to 47/50 when the rulebook moved from per-question rule snippets into the shared state. The local readout gives gemma the rulebook the same way, before the report.
+
 - 19 of the 35 wrong cells under the most-probable rule are one field: `pe_subsegmental` called present, at P between 0.47 and 0.85, in reports that never say subsegmental. The five true subsegmental reports got P = 1.0. The probabilities carry the signal that the most-probable rule throws away.
 - The thresholds were compared after seeing these results, so 44 to 45 is Jev's level on this set, not a tuned score to expect elsewhere.
 - As a review flag, "any embolism field with 0.2 < P(present) < 0.8" catches every wrong report under the 0.9 rule but flags 23 of 50 reports; the gemma pair's disagreement flagged 5 with none missed.
