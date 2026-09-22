@@ -45,4 +45,4 @@ Real reports must never reach a cloud model; `--allow-cloud` exists only for the
 - Pair, grouped (recommended when an hour per 50 reports is fine): `uv run benchmark.py --schema ctpa --models gemma4:26b gpt-oss:20b --grouped`
 - gemma alone, grouped (11 min per 50, no flags): `uv run benchmark.py --schema ctpa --models gemma4:26b --grouped`
 - Fine-mode retry, gemma alone (14 min per 50): `git pull` then `uv run benchmark.py --schema ctpa --models gemma4:26b --grouped --fine --force`; without `--force` the old `_fine.json` raw files are resumed and nothing runs.
-- The file to read is `final_ctpa.csv`; send `results_ctpa.csv` here for scoring.
+- The file to read is `final_ctpa.csv`. The file to send here for scoring is the copy `benchmark.py` writes under `runs/` with the date and commit in its name (last console line): files named `results_ctpa.csv` arrived stale three times on 2026-09-21, an old copy substituted somewhere on the way between the laptop and the Mac.

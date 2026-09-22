@@ -372,7 +372,7 @@ The pair runs all reports; mistral-small runs only the disputed ones (about 20% 
 
 The three-state version of this schema (present true/false/null) was replaced by the two-boolean one after the five-model laptop run below; the cloud validation tables above it refer to the three-state version.
 
-`benchmark.py` compares the first two models; with a third model listed, run `compare.py --schema ctpa --results results_ctpa.csv --models <a> <b> --ground-truth ground_truth_ctpa.csv` for the other pairs. Send `results_ctpa.csv` for review.
+`benchmark.py` compares the first two models; with a third model listed, run `compare.py --schema ctpa --results results_ctpa.csv --models <a> <b> --ground-truth ground_truth_ctpa.csv` for the other pairs. `benchmark.py` ends by copying the results to `runs/results_ctpa_<date-time>_<commit>.csv`, a name no earlier run used; that copy is the file to send for review (a plain `results_ctpa.csv` arrived stale three times, an old copy substituted somewhere between the laptop and the Mac).
 
 ### Cloud validation of the CTPA set
 

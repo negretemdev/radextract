@@ -7,11 +7,15 @@ Outputs: results_<schema>.csv, summary_<schema>.csv and, with two or more models
 """
 
 import argparse
+import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import pandas as pd
+
+from extract import code_version
 
 SCHEMAS = {"chest_ct": "ground_truth.csv", "binary": "ground_truth_binary.csv", "ctpa": "ground_truth_ctpa.csv"}
 
@@ -96,7 +100,12 @@ def main():
     if args.input is not None:
         resolve += ["--input", str(args.input)]
     run(resolve)
-    print(f"\nDone. Files: {results}, {summary}" + (f", {disputed}" if len(args.models) >= 2 else "") + f", final_{args.schema}.csv. Send {results} for review.")
+    # A copy under a name no earlier run ever used, so a cached or synced old file can never be mistaken for it.
+    copy = Path("runs") / f"{results.stem}_{time.strftime('%Y%m%d-%H%M')}_{code_version() or 'unknown'}.csv"
+    copy.parent.mkdir(exist_ok=True)
+    shutil.copyfile(results, copy)
+    print(f"\nDone. Files: {results}, {summary}" + (f", {disputed}" if len(args.models) >= 2 else "") + f", final_{args.schema}.csv."
+          f"\nThe file to send for review is the copy with the unique name: {copy}")
 
 
 if __name__ == "__main__":
