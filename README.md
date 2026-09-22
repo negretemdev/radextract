@@ -597,3 +597,19 @@ One request per call group (the gateway answered all 64 questions with their rul
 - The thresholds were compared after seeing these results, so 44 to 45 is Jev's level on this set, not a tuned score to expect elsewhere.
 - As a review flag, "any embolism field with 0.2 < P(present) < 0.8" catches every wrong report under the 0.9 rule but flags 23 of 50 reports; the gemma pair's disagreement flagged 5 with none missed.
 - Jev is a cloud model: whatever it scores, it can never read the real reports.
+
+### gemma4:26b with the System One methods on the laptop (2026-09-22, commit 81ce0ec)
+
+`uv run decide.py --models gemma4:26b`, 50 synthetic reports, every report called, all 50 valid for both methods.
+
+| gemma4:26b run | reports with every PE field right | PE-positive reports right | wrong PE cells | time for 50 |
+|---|---|---|---|---|
+| grouped extraction (production, Sep 18) | 47/50 | 26/29 | 5 | 11 min |
+| readout, most probable answer | 44/50 | 23/29 | 14 | 17 min |
+| readout, present only when P(present) >= 0.9 | 47/50 | 26/29 | 5 | 17 min |
+| adapter-grouped | 47/50 | 26/29 | 7 | 15 min |
+
+- Neither method beats grouped extraction on its own. The 0.9 cut is the one reported for Jev before this run, not tuned on it.
+- As a second pass, both work as a review flag. Grouped and adapter-grouped disagree on 5 reports (P003, P013, P018, P027, P047), and those 5 hold every error of both. Grouped and the readout at 0.9 disagree on 5 (P003, P013, P027, P042, P047), with the same property. The current pair, grouped gemma and grouped gpt-oss, disagrees on 4 (P013, P027, P030, P047), also holding every error, but takes about 61 minutes instead of 26 to 28.
+- The readout at 0.9 misses the same three reports as Jev with the rulebook (P003, P013, P042), nearly cell for cell. Those misses come from the question wording and rulebook the two share, not from the model.
+- The adapter's probabilities, written by gemma as numbers, are all 0 or 1, so they carry no confidence signal. The readout's come from token probabilities and do: the band 0.1 < P < 0.9 flags 15 reports and holds all of its own errors.
