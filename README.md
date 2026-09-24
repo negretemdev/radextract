@@ -613,3 +613,17 @@ One request per call group (the gateway answered all 64 questions with their rul
 - As a second pass, both work as a review flag. Grouped and adapter-grouped disagree on 5 reports (P003, P013, P018, P027, P047), and those 5 hold every error of both. Grouped and the readout at 0.9 disagree on 5 (P003, P013, P027, P042, P047), with the same property. The current pair, grouped gemma and grouped gpt-oss, disagrees on 4 (P013, P027, P030, P047), also holding every error, but takes about 61 minutes instead of 26 to 28.
 - The readout at 0.9 misses the same three reports as Jev with the rulebook (P003, P013, P042), nearly cell for cell. Those misses come from the question wording and rulebook the two share, not from the model.
 - The adapter's probabilities, written by gemma as numbers, are all 0 or 1, so they carry no confidence signal. The readout's come from token probabilities and do: the band 0.1 < P < 0.9 flags 15 reports and holds all of its own errors.
+
+### Does a different probability cut-off help? (same laptop run, 2026-09-24)
+
+Present counted only when P(present) reaches the cut-off, the quote-free repairs re-applied, reports with every PE field right:
+
+| cut-off | 0.5 | 0.8 | 0.9 | 0.95 | 0.975 | 0.99 | 0.999 |
+|---|---|---|---|---|---|---|---|
+| readout | 44/50 | 46/50 | 47/50 | 47/50 | 48/50 | 47/50 | 46/50 |
+| adapter-grouped | 47/50 | 47/50 | 47/50 | 46/50 | 46/50 | 46/50 | 46/50 |
+
+- The readout climbs from 44 to a plateau of 47 between 0.9 and 0.99. The single 48 at 0.975 is one report, chosen after seeing the answers; it is noise at this sample size, not a setting to rely on.
+- The adapter cannot be tuned: gemma writes its probabilities as numbers and 1371 of 1373 of them are exactly 0 or 1.
+- Where the readout's probabilities do help is a two-sided rule: present at P >= 0.95, absent below 0.5, and the report sent to review when any embolism field falls in between. That flags 7 reports and every one of the other 43 is right; with the band widened to 0.3, 9 flagged and none wrong outside them. Grouped extraction has no such signal: its 3 wrong reports are silent unless a second pass disagrees.
+- Conclusion: grouped extraction stays the production extractor. It ties the best cut-off on accuracy, is the fastest, and is the only method that returns a verbatim quote per value. The System One methods are worth keeping only as the second pass that decides which reports a person reviews.
