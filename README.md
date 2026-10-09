@@ -660,3 +660,9 @@ The pilot output (redacted, only `ReportBody` kept) was read report by report ag
 - Row 10 stays flagged: a study degraded by motion (gemma missed suboptimal) with a "partially occluding" clot (gpt-oss missed nonocclusive). That is the kind of report a person should read.
 - Other things seen, none of which changes a present/absent value: gemma sometimes negates right heart strain with a quote that is not in the report ("no strain") or borrowed from another sentence, and shortens quotes with "...".
 - The repairs were written after reading these same 20 reports, so the next batch is the real test of them.
+
+### Summarizing the review flags without sharing report text (`flag_summary.py`)
+
+    uv run flag_summary.py --input "C:\data\combined_extracted.csv"
+
+Reads a `run_reports.py` output (also after Excel re-saved it) and prints counts only: rows, rows with an embolism, rows flagged, and for every field the models disagreed on, how many reports, which model said present, and the row numbers in the user's own file. It also counts flagged reports whose disagreements are all outside the embolism fields, which is how many reviews a flag limited to the embolism fields would remove. Nothing from the reports or quotes is printed, so the output can be shared. Checked on a synthetic stand-in output with known disagreements, including a quote crafted to look like another field.
