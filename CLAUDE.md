@@ -10,6 +10,7 @@ Real reports must never reach a cloud model; `--allow-cloud` exists only for the
 - Short messages, one paragraph or a small table; lead with the number that matters.
 - Report accuracy at the report level (reports with every embolism field right, and among PE-positive reports), never only per-field averages: most cells are correct negatives and per-field accuracy hides everything.
 - No Ollama cloud validation runs any more (the user's instruction, 2026-09-21: they took an hour). Validate new code paths against fake servers that answer from the ground truth (scratchpad `fake_servers.py` pattern, run from a scratch copy so no fake raw files land in `raw/`), then hand over one command and say that no real model has run it yet.
+- Never list, search or open anything outside this repo and the scratchpad (Downloads, Documents, OneDrive, home) unless the user attaches or names the exact file: the machine holds confidential data (the user's instruction, 2026-10-09).
 - Explain every command in one line. The user will not run a command they do not understand, nor one that pushes from the laptop.
 - Anything Node or Vercel: pnpm only, never npm. `decide.py` talks to Vercel with Python's standard library, so neither is needed.
 - Commit and push after every meaningful change; tag states the user may want to return to (`grouped-baseline` = grouped extraction before fine mode).
