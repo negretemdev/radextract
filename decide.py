@@ -60,7 +60,7 @@ CRITERIA = {
 LETTERS = {"A": "present", "B": "negated", "C": "not_mentioned"}
 
 # ---- the questions: one per field, the same text for every method ----
-GENERAL_RULE = ("Only the report body counts (FINDINGS, IMPRESSION, narrative); text in INDICATION, HISTORY or COMPARISON "
+GENERAL_RULE = ("Only the report body counts (FINDINGS, IMPRESSION, narrative); text in INDICATION, REASON FOR EXAM, CLINICAL HISTORY, HISTORY or COMPARISON "
                 "never counts. A finding described with a hedged interpretation (likely, may represent, suspicious for) is "
                 "present; 'cannot be excluded' alone is not. Stable, unchanged, decreased or residual findings are present; "
                 "resolved ones are negated.")

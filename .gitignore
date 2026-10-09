@@ -11,3 +11,4 @@ final*.csv
 apple/apple_fm
 runs/
 .env
+local_data/

@@ -627,3 +627,19 @@ Present counted only when P(present) reaches the cut-off, the quote-free repairs
 - The adapter cannot be tuned: gemma writes its probabilities as numbers and 1371 of 1373 of them are exactly 0 or 1.
 - Where the readout's probabilities do help is a two-sided rule: present at P >= 0.95, absent below 0.5, and the report sent to review when any embolism field falls in between. That flags 7 reports and every one of the other 43 is right; with the band widened to 0.3, 9 flagged and none wrong outside them. Grouped extraction has no such signal: its 3 wrong reports are silent unless a second pass disagrees.
 - Conclusion: grouped extraction stays the production extractor. It ties the best cut-off on accuracy, is the fastest, and is the only method that returns a verbatim quote per value. The System One methods are worth keeping only as the second pass that decides which reports a person reviews.
+
+## Running on a real export (`run_reports.py`)
+
+One command over the hospital export, one report per row, run on the laptop only:
+
+    uv run run_reports.py --input "C:\data\ctpa_export.csv" --limit 20     (pilot: the first 20 rows)
+    uv run run_reports.py --input "C:\data\ctpa_export.csv"                (every row; re-running resumes)
+
+- Reads comma, tab, semicolon or pipe separated files (guessed from the header line), UTF-8 or Windows-1252, multi-line quoted report text. The report text comes from `--text-column` (default `ReportBody`). An Excel file is refused with instructions to save it as CSV UTF-8.
+- Step 1: gemma4:26b, grouped calls, on every distinct report text (identical texts are extracted once).
+- Step 2: gpt-oss:20b, grouped calls, only on the reports where gemma found an embolism, did not state its absence, or failed. Disagreement puts the report in review; on the 50 test reports this pair flagged 5 and every wrong report was among them. `--second none` stops after step 1, and running the command again later without it adds step 2 without repeating step 1.
+- Output: `<input name>_extracted.csv` next to the input, UTF-8 with a byte-order mark so Excel opens it directly. It has every original column in the original order, then `extraction_id`, then `<field>_mentioned`, `<field>_present` and `<field>_evidence` for the 64 fields, then `resolved_by` (agreement, unresolved, single_model, no_valid_output or empty_report), `needs_review` (1 = a person should read it) and `disputed_fields`. It is written after step 1 and again after step 2.
+- Privacy: only the Ollama on the same machine is used; cloud model tags and non-local hosts are refused. Working files go to `local_data/` and raw answers to `raw/`; both hold report text and are git-ignored. Raw files are named by a hash of the report text, never by accession number or MRN.
+- Time on the laptop, from the measured test latencies (8 s per report without an embolism, 18 s with one for gemma; 30 and 81 s for gpt-oss): step 1 about 10 to 11 hours for 3,940 reports, step 2 about 9 to 18 hours depending on how many reports are positive. Real reports with an abdomen and pelvis section are longer, so expect somewhat more.
+- Checked so far: against a stand-in export with the same 35 columns (tab and comma separated, Windows line endings, duplicates, an empty row) and fake gemma and gpt-oss servers answering from the ground truth: columns and rows in order, original values untouched, 0 extracted values different from the truth, flags exactly where planted, every guard message. No real model has run it yet; the pilot is the first real test.
+- The rulebook now names REASON FOR EXAM and CLINICAL HISTORY next to INDICATION as text that never counts, because the export's reports open with "Reason for exam (per EHR order)".

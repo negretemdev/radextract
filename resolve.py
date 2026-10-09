@@ -4,7 +4,8 @@
 Per scored field the value is the majority across the models that produced valid output for that report
 (presence only: asserted or not). With two models that disagree and no third vote the primary model's
 value is kept and the report is flagged. Columns added at the end:
-  resolved_by    agreement | tiebreaker | unresolved (the worst case over the report's fields)
+  resolved_by    agreement | tiebreaker | unresolved (the worst case over the report's fields) | single_model (only one
+                 model answered this report; flagged when another model was asked and failed) | no_valid_output
   needs_review   1 when any field is unresolved, when a deciding third-model value has a quote that is not verbatim,
                  or when the losing side of a dispute backed its value with a verbatim quote, asserting or negating
                  (a quote is evidence, silence is not, so a majority without one does not settle it without a look)
@@ -36,29 +37,20 @@ def quote_is_wrong(value) -> bool:
         return False
 
 
-def main():
-    parser = argparse.ArgumentParser(description="Resolve two or three models into one final CSV per report.")
-    parser.add_argument("--results", type=Path, default=Path("results.csv"))
-    parser.add_argument("--schema", choices=SCHEMAS, default="ctpa")
-    parser.add_argument("--input", type=Path, default=None, help="reports CSV whose columns are all kept (default: the schema's reports file)")
-    parser.add_argument("--models", nargs="+", default=None, help="models in priority order, first is primary; third and later are tiebreakers (default: order in the file)")
-    parser.add_argument("--output", type=Path, default=None, help="default: final_<schema>.csv")
-    args = parser.parse_args()
-
-    schema = importlib.import_module(SCHEMAS[args.schema])
+def resolve_reports(results: pd.DataFrame, reports: pd.DataFrame, models: list, schema) -> pd.DataFrame:
+    """One output row per row of `reports` (which needs a report_id column), all its columns kept in order, followed by
+    the resolved extraction and resolved_by, needs_review and disputed_fields."""
     fields = schema.SCORED_FIELDS
-    results = pd.read_csv(args.results, dtype={"report_id": str})
     results = results[results["run"] == 1]
-    models = args.models or list(dict.fromkeys(results["model"]))
-    reports = pd.read_csv(args.input or Path(schema.REPORTS_FILE), dtype=str, keep_default_na=False)
     rows_by_model = {model: results[results["model"] == model].set_index("report_id") for model in models}
     extra_columns = [column for column in schema.FLAT_COLUMNS if column not in fields]
 
     final_rows = []
-    for report in reports.itertuples(index=False):
-        report_id = report.report_id
-        row = report._asdict()
+    for report in reports.to_dict("records"):
+        report_id = report["report_id"]
+        row = dict(report)
         voters = [model for model in models if report_id in rows_by_model[model].index and rows_by_model[model].at[report_id, "valid_json"] == 1]
+        failed = [model for model in models if report_id in rows_by_model[model].index and rows_by_model[model].at[report_id, "valid_json"] != 1]
         resolved_by = "agreement"
         needs_review = 0
         disputes = []
@@ -107,6 +99,10 @@ def main():
                 owner = voters[0]
             if column in rows_by_model[owner].columns:
                 row[column] = rows_by_model[owner].at[report_id, column]
+        if len(voters) == 1:
+            resolved_by = "single_model"
+            if failed:
+                needs_review = 1
         row["resolved_by"] = resolved_by
         row["needs_review"] = needs_review
         row["disputed_fields"] = " | ".join(disputes)
@@ -114,7 +110,23 @@ def main():
 
     columns = list(reports.columns) + [column for column in schema.FLAT_COLUMNS if not column.endswith("_evidence_ok")] + ["resolved_by", "needs_review", "disputed_fields"]
     final = pd.DataFrame(final_rows)
-    final = final[[column for column in columns if column in final.columns]]
+    return final[[column for column in columns if column in final.columns]]
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Resolve two or three models into one final CSV per report.")
+    parser.add_argument("--results", type=Path, default=Path("results.csv"))
+    parser.add_argument("--schema", choices=SCHEMAS, default="ctpa")
+    parser.add_argument("--input", type=Path, default=None, help="reports CSV whose columns are all kept (default: the schema's reports file)")
+    parser.add_argument("--models", nargs="+", default=None, help="models in priority order, first is primary; third and later are tiebreakers (default: order in the file)")
+    parser.add_argument("--output", type=Path, default=None, help="default: final_<schema>.csv")
+    args = parser.parse_args()
+
+    schema = importlib.import_module(SCHEMAS[args.schema])
+    results = pd.read_csv(args.results, dtype={"report_id": str})
+    models = args.models or list(dict.fromkeys(results.loc[results["run"] == 1, "model"]))
+    reports = pd.read_csv(args.input or Path(schema.REPORTS_FILE), dtype=str, keep_default_na=False)
+    final = resolve_reports(results, reports, models, schema)
     output = args.output or Path(f"final_{args.schema}.csv")
     final.to_csv(output, index=False, encoding="utf-8")
     print(f"{len(final)} reports | resolved_by: {final['resolved_by'].value_counts().to_dict()} | needs_review: {int(final['needs_review'].sum())}")

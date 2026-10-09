@@ -243,7 +243,7 @@ Every field has two booleans:
 Example for pleural_effusion: "Small left pleural effusion" gives mentioned true, present true; "No pleural effusion" gives mentioned true, present false; a report that never speaks of effusions gives mentioned false, present false. So present true always comes with mentioned true, and mentioned true with present false is exactly a negation.
 
 Rules:
-- Text in INDICATION, HISTORY or COMPARISON never counts. The three study-quality fields may be taken from TECHNIQUE; nothing else may.
+- Text in INDICATION, REASON FOR EXAM, CLINICAL HISTORY, HISTORY or COMPARISON never counts: a suspected or ruled-out diagnosis written there is the question, not a finding. The three study-quality fields may be taken from TECHNIQUE; nothing else may.
 - Never infer. A described finding with a hedged interpretation ("likely", "may represent", "favored", "suspicious for") is true. "Cannot be excluded" or "not excluded" alone is never true. A measurement alone is not a finding.
 - "Stable", "unchanged", "decreased", "residual" findings are true; "resolved" is false.
 - A whole structure described as normal or clear negates its findings: "the lungs are clear" makes consolidation, ground_glass_opacity, atelectasis, pulmonary_nodule, emphysema, mosaic_attenuation and pulmonary_infarct mentioned but not present.
