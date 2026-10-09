@@ -1,38 +1,49 @@
-"""Run the CTPA extraction over a real export, one report per row, and write it back with the answers appended.
+"""Run the CTPA extraction over a real export, one row at a time, appending each finished row to the output file.
 
     uv run run_reports.py --input "C:\\data\\ctpa_export.csv" --limit 20     (pilot: the first 20 rows)
-    uv run run_reports.py --input "C:\\data\\ctpa_export.csv"                (every row; re-running resumes)
+    uv run run_reports.py --input "C:\\data\\ctpa_export.csv"                (every row)
 
-Step 1  gemma4:26b, grouped calls, on every report.
-Step 2  gpt-oss:20b, grouped calls, only on the reports where gemma found an embolism, did not plainly rule one out, or
-        failed. A report where the two disagree is flagged for review; on the 50 test reports this pair flagged 5 and
-        every wrong report was among them. --second none skips this step.
-Output  <input name>_extracted.csv next to the input: every original column in the original order, then extraction_id,
-        <field>_mentioned, <field>_present and <field>_evidence for the 64 fields, resolved_by, needs_review and
-        disputed_fields. Written after step 1 and again after step 2, so stopping during step 2 still leaves gemma's
-        answers. UTF-8 with a byte-order mark, so Excel opens it directly.
-Reading the input: comma, tab, semicolon or pipe separated (guessed from the header line), UTF-8 or Windows-1252, the
-        report text in --text-column (default ReportBody). Identical report texts are extracted once.
-Privacy everything goes through the Ollama on this machine: cloud model tags and non-local hosts are refused. The working
-        files in local_data/ and the raw answers in raw/ contain report text; they stay on this machine (git ignores both).
+For every row, in the order of the input:
+  1. gemma4:26b reads the report (grouped calls).
+  2. gpt-oss:20b reads the same report when gemma found an embolism, when the report never states whether there is one,
+     or when gemma failed (--second-opinion embolism, the default). "all" sends every report to both models (about four
+     times longer), "none" uses gemma alone.
+  3. The finished row is appended to the output at once and written to disk: every original column, then row_number,
+     extraction_id, needs_review (1 = a person should read it: the two models disagree on a finding, a model failed, or
+     the row has no report text), resolved_by, models, disputed_fields, then mentioned, present and the quote for each of
+     the 64 findings, then seconds.
+Stopping is safe at any time (Ctrl+C or closing the window): every finished row is already in the file, and running the
+same command again continues with the next row. Nothing else is stored, no JSON files.
+
+The output is <input name>_extracted.csv next to the input, UTF-8 with a byte-order mark so Excel opens it directly.
+The input may be comma, tab, semicolon or pipe separated (guessed from the header line), UTF-8 or Windows-1252, with the
+report text in --text-column (default ReportBody). Identical report texts are read once and the answer reused.
+Only the Ollama on this machine is used; cloud model tags and other hosts are refused.
 """
 
 import argparse
+import csv
 import hashlib
-import subprocess
+import math
+import os
 import sys
+import time
 from pathlib import Path
 from urllib.parse import urlparse
 
 import pandas as pd
+from ollama import Client, ResponseError
+from tqdm import tqdm
 
 import schema_ctpa as schema
 from evaluate import is_present
-from extract import is_cloud_model
+from extract import build_row, call_model_grouped, is_cloud_model, split_model_tag
 from resolve import resolve_reports
 
 DELIMITERS = [",", "\t", ";", "|"]
 LOCAL_HOSTS = {"localhost", "127.0.0.1", "::1"}
+FIELD_COLUMNS = [column for column in schema.FLAT_COLUMNS]          # <finding>_mentioned, _present, _evidence
+REVIEW_COLUMNS = ["row_number", "extraction_id", "needs_review", "resolved_by", "models", "disputed_fields"]
 
 
 def read_export(path: Path, text_column: str) -> pd.DataFrame:
@@ -56,83 +67,186 @@ def read_export(path: Path, text_column: str) -> pd.DataFrame:
 
 
 def extraction_id(text: str) -> str:
-    """The key of a report in the working files and raw answers: a hash of its text, so re-sorted or re-exported
-    files resume correctly and no accession number or MRN appears in a file name."""
+    """A hash of the report text: identifies the report without putting an accession number or MRN anywhere."""
     return "R" + hashlib.sha1(text.encode("utf-8")).hexdigest()[:12] if text else ""
 
 
+def cell(value) -> str:
+    if value is None or (isinstance(value, float) and math.isnan(value)):
+        return ""
+    return str(value)
+
+
+def finished_rows(output: Path, columns: list) -> dict:
+    """row_number -> output record for every complete row already in the output. A last row cut off by a hard stop is
+    removed so that it is done again."""
+    if not output.exists():
+        return {}
+    with output.open(encoding="utf-8-sig", newline="") as handle:
+        records = list(csv.reader(handle))
+    if not records:
+        return {}
+    if records[0] != columns:
+        sys.exit(f"ERROR: {output} exists but has different columns (another input or an older version of this script). "
+                 "Move or rename it, or pass --output with a new file name.")
+    complete = [record for record in records[1:] if len(record) == len(columns)]
+    if len(complete) != len(records) - 1:
+        with output.open("w", encoding="utf-8-sig", newline="") as handle:
+            writer = csv.writer(handle)
+            writer.writerow(columns)
+            writer.writerows(complete)
+        print(f"Removed {len(records) - 1 - len(complete)} incomplete row(s) left by a hard stop; they will be done again.")
+    position = {name: index for index, name in enumerate(columns)}
+    return {int(record[position["row_number"]]): dict(zip(columns, record)) for record in complete}
+
+
+def hold_lock(output: Path):
+    """Refuse to start when another run is writing the same output (two windows would interleave rows). The lock belongs
+    to this process and ends with it, so a crash or a closed window never leaves a stale lock behind."""
+    handle = output.with_name(output.name + ".lock").open("a+")
+    try:
+        if os.name == "nt":
+            import msvcrt
+            msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+        else:
+            import fcntl
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        sys.exit(f"ERROR: another run is already writing {output.name}. Let it finish, or stop it (Ctrl+C in its window) first.")
+    return handle
+
+
+def release_lock(handle):
+    path = Path(handle.name)
+    handle.close()
+    try:
+        path.unlink()
+    except OSError:
+        pass   # another run has just taken it over
+
+
+def append_row(output: Path, record: list):
+    """Append one row and force it to disk. Excel on Windows locks a CSV it has open: wait for it to be closed."""
+    warned = False
+    while True:
+        try:
+            with output.open("a", encoding="utf-8", newline="") as handle:
+                csv.writer(handle).writerow(record)
+                handle.flush()
+                os.fsync(handle.fileno())
+            return
+        except PermissionError:
+            if not warned:
+                tqdm.write(f"{output.name} is open in another program (Excel?). Close it; the run waits and then continues.")
+                warned = True
+            time.sleep(5)
+
+
 def main():
-    parser = argparse.ArgumentParser(description="CTPA extraction over a real export, answers appended to every row.")
+    parser = argparse.ArgumentParser(description="CTPA extraction over a real export, one finished row appended at a time.")
     parser.add_argument("--input", type=Path, required=True, help="the export: one report per row, all columns are kept")
-    parser.add_argument("--text-column", default="ReportBody", help="column holding the full report text (default ReportBody)")
+    parser.add_argument("--text-column", default="ReportBody", help="column with the full report text (default ReportBody)")
     parser.add_argument("--output", type=Path, default=None, help="default: <input name>_extracted.csv next to the input")
-    parser.add_argument("--limit", type=int, default=None, help="only the first N rows (a pilot)")
-    parser.add_argument("--primary", default="gemma4:26b", help="model for every report (default gemma4:26b)")
-    parser.add_argument("--second", default="gpt-oss:20b", help="second opinion on the uncertain reports, or none (default gpt-oss:20b)")
+    parser.add_argument("--limit", type=int, default=None, help="stop after the first N rows of the input (a pilot)")
+    parser.add_argument("--model", default="gemma4:26b", help="model that reads every report (default gemma4:26b)")
+    parser.add_argument("--second-model", default="gpt-oss:20b", help="model for the second opinion (default gpt-oss:20b)")
+    parser.add_argument("--second-opinion", choices=["embolism", "all", "none"], default="embolism",
+                        help="embolism (default): second model on reports where the first found an embolism, the report never "
+                             "states whether there is one, or the first failed; all: every report; none: never")
     parser.add_argument("--host", default="http://localhost:11434")
     args = parser.parse_args()
 
-    models = [args.primary] + ([] if args.second == "none" else [args.second])
+    models = [args.model] + ([] if args.second_opinion == "none" else [args.second_model])
     for model in models:
         if is_cloud_model(model):
             sys.exit(f"ERROR: {model} is a cloud model. Real reports never leave this machine; use a local model tag.")
     if urlparse(args.host).hostname not in LOCAL_HOSTS:
         sys.exit(f"ERROR: {args.host} is not this machine. Real reports only go to the Ollama running locally.")
+    client = Client(host=args.host)
+    for model in models:
+        try:
+            client.show(split_model_tag(model)[0])
+        except ResponseError as error:
+            sys.exit(f"ERROR: model {model} is not in this Ollama ({error.error}). Run: ollama pull {model}")
+        except Exception as error:
+            sys.exit(f"ERROR: cannot reach Ollama at {args.host}: {error}")
 
     table = read_export(args.input, args.text_column)
     if args.limit is not None:
         table = table.head(args.limit)
-    table["report_id"] = table[args.text_column].map(lambda text: extraction_id(text.strip()))
-    reports = (table.loc[table["report_id"] != "", ["report_id", args.text_column]]
-               .drop_duplicates("report_id").rename(columns={args.text_column: "report_text"}))
-    reports["report_text"] = reports["report_text"].str.strip()
-    empty = int((table["report_id"] == "").sum())
-    print(f"{len(reports)} distinct reports to extract; {len(table) - len(reports) - empty} duplicate texts reuse an answer; "
-          f"{empty} rows have no report text")
-
-    work = Path("local_data") / args.input.stem
-    work.mkdir(parents=True, exist_ok=True)
-    prepared = work / "reports.csv"
-    reports.to_csv(prepared, index=False, encoding="utf-8")
     output = args.output or args.input.with_name(args.input.stem + "_extracted.csv")
+    lock = hold_lock(output)
+    columns = list(table.columns) + REVIEW_COLUMNS + FIELD_COLUMNS + ["seconds"]
+    done = finished_rows(output, columns)
+    answers = {}   # extraction_id -> the appended columns, reused for identical report texts
+    for row_number, record in done.items():
+        if row_number > len(table):
+            continue   # done in an earlier run without --limit
+        original = table.iloc[row_number - 1]
+        if extraction_id(original[args.text_column].strip()) != record["extraction_id"]:
+            sys.exit(f"ERROR: row {row_number} of {output.name} does not match row {row_number} of {args.input.name}: the input "
+                     "changed since this output was started. Pass --output with a new file name to start a fresh output.")
+        if record["extraction_id"] and record["resolved_by"] not in ("no_valid_output", "empty_report"):
+            answers[record["extraction_id"]] = {name: record[name] for name in REVIEW_COLUMNS[2:] + FIELD_COLUMNS}
+    if not output.exists():
+        with output.open("w", encoding="utf-8-sig", newline="") as handle:
+            csv.writer(handle).writerow(columns)
+    todo = [number for number in range(1, len(table) + 1) if number not in done]
+    print(f"{output.name}: {len(table) - len(todo)} rows already done, {len(todo)} to go. Models: {' + '.join(models)} "
+          f"(second opinion: {args.second_opinion}). Stop any time with Ctrl+C; the same command continues.", flush=True)
 
-    def extract(model: str, results_path: Path, ids_path: Path = None):
-        command = [sys.executable, "extract.py", "--schema", "ctpa", "--grouped", "--models", model,
-                   "--input", str(prepared), "--output", str(results_path), "--host", args.host]
-        if ids_path is not None:
-            command += ["--ids", str(ids_path)]
-        if subprocess.run(command).returncode != 0:
-            sys.exit(f"ERROR: {model} stopped. Re-run the same command; finished reports are resumed.")
-
-    def write_output(result_files: list, used_models: list):
-        results = pd.concat([pd.read_csv(path, dtype={"report_id": str}) for path in result_files], ignore_index=True)
-        final = resolve_reports(results, table, used_models, schema)
-        final.loc[final["report_id"] == "", "resolved_by"] = "empty_report"
-        final = final.rename(columns={"report_id": "extraction_id"})
-        final.to_csv(output, index=False, encoding="utf-8-sig")
-        print(f"\nWrote {output}: {len(final)} rows | needs_review {int(final['needs_review'].sum())} | "
-              f"{final['resolved_by'].value_counts().to_dict()}", flush=True)
-
-    print(f"\nStep 1: {args.primary} on all {len(reports)} reports", flush=True)
-    primary_results = work / "results_primary.csv"
-    extract(args.primary, primary_results)
-    write_output([primary_results], [args.primary])
-    if args.second == "none":
+    progress = tqdm(total=len(table), initial=len(table) - len(todo), unit="row", dynamic_ncols=True)
+    flagged = 0
+    try:
+        for row_number in todo:
+            original = table.iloc[row_number - 1]
+            text = original[args.text_column].strip()
+            key = extraction_id(text)
+            started = time.perf_counter()
+            if not key:
+                appended = {"needs_review": 1, "resolved_by": "empty_report", "models": "", "disputed_fields": ""}
+                note = "no report text"
+            elif key in answers:
+                appended = answers[key]
+                note = "same text as an earlier row, answer reused"
+            else:
+                raw = call_model_grouped(client, args.model, text, schema)
+                rows = [build_row(key, args.model, 1, text, raw, schema)]
+                first = rows[0]
+                ask_second = args.second_opinion == "all" or (args.second_opinion == "embolism" and (
+                    first["valid_json"] != 1 or is_present(first.get("pulmonary_embolism_present"))
+                    or not is_present(first.get("pulmonary_embolism_mentioned"))))
+                used = [args.model]
+                if ask_second:
+                    raw_second = call_model_grouped(client, args.second_model, text, schema)
+                    rows.append(build_row(key, args.second_model, 1, text, raw_second, schema))
+                    used.append(args.second_model)
+                final = resolve_reports(pd.DataFrame(rows), pd.DataFrame([{"report_id": key}]), used, schema).iloc[0]
+                appended = {"needs_review": final["needs_review"], "resolved_by": final["resolved_by"],
+                            "models": " + ".join(used), "disputed_fields": final["disputed_fields"]}
+                appended.update({name: final.get(name) for name in FIELD_COLUMNS})
+                if final["resolved_by"] not in ("no_valid_output",):
+                    answers[key] = appended
+                if final["resolved_by"] == "no_valid_output":
+                    note = "no valid answer from " + " or ".join(used)
+                else:
+                    note = "embolism" if is_present(final.get("pulmonary_embolism_present")) else "no embolism"
+                    note += (f", {len(used)} models, {final['resolved_by']}" if len(used) > 1 else "")
+                note += " -> REVIEW" if int(final["needs_review"]) else ""
+            values = {**{name: original[name] for name in table.columns}, "row_number": row_number, "extraction_id": key,
+                      **appended, "seconds": round(time.perf_counter() - started, 1)}
+            append_row(output, [cell(values.get(name)) for name in columns])
+            flagged += int(values["needs_review"])
+            progress.update(1)
+            tqdm.write(f"row {row_number}: {note} ({values['seconds']:.0f} s)")
+    except KeyboardInterrupt:
+        progress.close()
+        release_lock(lock)
+        print(f"\nStopped. {progress.n} of {len(table)} rows are in {output}. Run the same command to continue.")
         return
-
-    first = pd.read_csv(primary_results, dtype={"report_id": str})
-    uncertain = ((first["valid_json"] != 1) | first["pulmonary_embolism_present"].map(is_present)
-                 | ~first["pulmonary_embolism_mentioned"].map(is_present))
-    selected = first.loc[uncertain, ["report_id"]]
-    print(f"\nStep 2: {args.second} on {len(selected)} of {len(first)} reports (embolism found, not plainly ruled out, "
-          "or step 1 failed)", flush=True)
-    if selected.empty:
-        return
-    ids = work / "second_opinion_ids.csv"
-    selected.to_csv(ids, index=False)
-    second_results = work / "results_second.csv"
-    extract(args.second, second_results, ids)
-    write_output([primary_results, second_results], models)
+    progress.close()
+    release_lock(lock)
+    print(f"\nDone: {len(table)} rows in {output}; {flagged} of the rows done in this session need review.")
 
 
 if __name__ == "__main__":
