@@ -20,7 +20,7 @@ NUMERIC_FIELDS = {"nodule_count", "largest_nodule_size_mm", "follow_up_interval_
 
 def is_present(value) -> bool:
     """True only for an asserted finding: True/"True" (binary and ctpa schemas) or "present" (chest_ct)."""
-    return value is True or str(value).strip() in ("True", "present")
+    return value is True or str(value).strip().lower() in ("true", "present")   # Excel re-saves True as TRUE
 
 
 def values_match(field: str, predicted, truth) -> bool:

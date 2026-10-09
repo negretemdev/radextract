@@ -7,7 +7,8 @@ For every row, in the order of the input:
   1. gemma4:26b reads the report (grouped calls).
   2. gpt-oss:20b reads the same report when gemma found an embolism, when the report never states whether there is one,
      or when gemma failed (--second-opinion embolism, the default). "all" sends every report to both models (about four
-     times longer), "none" uses gemma alone.
+     times longer), "none" uses gemma alone. Where both read a report and disagree, gpt-oss's answer is kept and the row
+     is flagged.
   3. The finished row is appended to the output at once and written to disk: every original column, then row_number,
      extraction_id, needs_review (1 = a person should read it: the two models disagree on a finding, a model failed, or
      the row has no report text), resolved_by, models, disputed_fields, then mentioned, present and the quote for each of
@@ -37,13 +38,13 @@ from tqdm import tqdm
 
 import schema_ctpa as schema
 from evaluate import is_present
-from extract import build_row, call_model_grouped, is_cloud_model, split_model_tag
+from extract import build_row, call_model_grouped, code_version, is_cloud_model, split_model_tag
 from resolve import resolve_reports
 
 DELIMITERS = [",", "\t", ";", "|"]
 LOCAL_HOSTS = {"localhost", "127.0.0.1", "::1"}
 FIELD_COLUMNS = [column for column in schema.FLAT_COLUMNS]          # <finding>_mentioned, _present, _evidence
-REVIEW_COLUMNS = ["row_number", "extraction_id", "needs_review", "resolved_by", "models", "disputed_fields"]
+REVIEW_COLUMNS = ["row_number", "extraction_id", "needs_review", "resolved_by", "models", "disputed_fields", "code_version"]
 
 
 def read_export(path: Path, text_column: str) -> pd.DataFrame:
@@ -87,8 +88,8 @@ def finished_rows(output: Path, columns: list) -> dict:
     if not records:
         return {}
     if records[0] != columns:
-        sys.exit(f"ERROR: {output} exists but has different columns (another input or an older version of this script). "
-                 "Move or rename it, or pass --output with a new file name.")
+        sys.exit(f"ERROR: {output} was made from another input or by an older version of this script, so its rows cannot be "
+                 "continued. Rename or delete it to start a fresh output, or pass --output with a new file name.")
     complete = [record for record in records[1:] if len(record) == len(columns)]
     if len(complete) != len(records) - 1:
         with output.open("w", encoding="utf-8-sig", newline="") as handle:
@@ -191,6 +192,7 @@ def main():
     if not output.exists():
         with output.open("w", encoding="utf-8-sig", newline="") as handle:
             csv.writer(handle).writerow(columns)
+    version = code_version()
     todo = [number for number in range(1, len(table) + 1) if number not in done]
     print(f"{output.name}: {len(table) - len(todo)} rows already done, {len(todo)} to go. Models: {' + '.join(models)} "
           f"(second opinion: {args.second_opinion}). Stop any time with Ctrl+C; the same command continues.", flush=True)
@@ -221,7 +223,10 @@ def main():
                     raw_second = call_model_grouped(client, args.second_model, text, schema)
                     rows.append(build_row(key, args.second_model, 1, text, raw_second, schema))
                     used.append(args.second_model)
-                final = resolve_reports(pd.DataFrame(rows), pd.DataFrame([{"report_id": key}]), used, schema).iloc[0]
+                # where both models read the report, the second model's answer is kept when they disagree (it was right on
+                # every disagreement in the first 20 real reports, and 48/50 against gemma's 47/50 on the test set)
+                priority = used[::-1]
+                final = resolve_reports(pd.DataFrame(rows), pd.DataFrame([{"report_id": key}]), priority, schema).iloc[0]
                 appended = {"needs_review": final["needs_review"], "resolved_by": final["resolved_by"],
                             "models": " + ".join(used), "disputed_fields": final["disputed_fields"]}
                 appended.update({name: final.get(name) for name in FIELD_COLUMNS})
@@ -234,7 +239,7 @@ def main():
                     note += (f", {len(used)} models, {final['resolved_by']}" if len(used) > 1 else "")
                 note += " -> REVIEW" if int(final["needs_review"]) else ""
             values = {**{name: original[name] for name in table.columns}, "row_number": row_number, "extraction_id": key,
-                      **appended, "seconds": round(time.perf_counter() - started, 1)}
+                      **appended, "code_version": version, "seconds": round(time.perf_counter() - started, 1)}
             append_row(output, [cell(values.get(name)) for name in columns])
             flagged += int(values["needs_review"])
             progress.update(1)

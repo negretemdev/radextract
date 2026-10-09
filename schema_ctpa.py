@@ -318,6 +318,33 @@ def sentence_around(quote: str, report_text: str) -> str:
     return folded_report[start + 1 if start >= 0 else 0: end if end >= 0 else len(folded_report)]
 
 
+EMBOLISM_WORDS = re.compile(r"embol|thromb|clot|filling defect|\bpe\b")
+SEGMENTAL_WORD = re.compile(r"(?<!sub)(?<!sub-)(?<!sub )\bsegmental\b")   # "segmental", never the end of "subsegmental"
+SUBSEGMENTAL_WORD = re.compile(r"\bsub[- ]?segmental\b")
+PARTIAL_OCCLUSION = re.compile(r"partial(ly)?[\s-]+occlu")
+# present only when the quote, or a report sentence that contains it, satisfies the check (added after the first 20 real
+# reports: gemma rolled "subsegmental" up to segmental, took "acute" from the exam title "(ACUTE)", called recanalized
+# emboli chronic without the word)
+WORD_CHECKS = {
+    "pe_segmental": lambda text: SEGMENTAL_WORD.search(text),
+    "pe_subsegmental": lambda text: SUBSEGMENTAL_WORD.search(text),
+    "pe_acute": lambda text: re.search(r"\bacute\b", text) and EMBOLISM_WORDS.search(text),
+    "pe_chronic": lambda text: re.search(r"\bchronic", text) and EMBOLISM_WORDS.search(text),
+}
+for _lobe in LOBE_WORDS:
+    WORD_CHECKS[f"pe_segmental_{_lobe}"] = WORD_CHECKS["pe_segmental"]
+
+
+def sentences_with(quote: str, report_text: str) -> list:
+    """Every sentence or line of the report that contains the quote (whitespace and case folded); the quote alone when
+    no single sentence holds it."""
+    folded_quote = re.sub(r"\s+", " ", quote or "").strip().lower()
+    if not folded_quote:
+        return []
+    pieces = [re.sub(r"\s+", " ", piece).strip().lower() for piece in re.split(r"(?<=\.)\s+|\n", report_text)]
+    return [piece for piece in pieces if folded_quote in piece] or [folded_quote]
+
+
 def normalize(data: dict, report_text: str = "") -> tuple[dict, dict]:
     """Repair what constrained decoding cannot enforce, so that only a present finding without a quote triggers a retry.
 
@@ -344,6 +371,23 @@ def normalize(data: dict, report_text: str = "") -> tuple[dict, dict]:
                 finding["present"] = False
                 finding["evidence"] = None
                 counts["quote_names_no_lobe"] += 1
+    counts["quote_lacks_required_word"] = 0
+    for name, check in WORD_CHECKS.items():
+        finding = data.get(name)
+        if isinstance(finding, dict) and finding.get("present") is True:
+            if not any(check(text) for text in sentences_with(finding.get("evidence"), report_text)):
+                finding["mentioned"] = False
+                finding["present"] = False
+                finding["evidence"] = None
+                counts["quote_lacks_required_word"] += 1
+    counts["partial_occlusion_made_nonocclusive"] = 0
+    occlusive, nonocclusive = data.get("pe_occlusive"), data.get("pe_nonocclusive")
+    if (isinstance(occlusive, dict) and occlusive.get("present") is True and isinstance(nonocclusive, dict)
+            and PARTIAL_OCCLUSION.search((occlusive.get("evidence") or "").lower())):
+        if nonocclusive.get("present") is not True:
+            nonocclusive.update({"mentioned": True, "present": True, "evidence": occlusive.get("evidence")})
+        occlusive.update({"mentioned": False, "present": False, "evidence": None})
+        counts["partial_occlusion_made_nonocclusive"] += 1
     counts["level_made_present"] = 0
     for artery, implied_names in ARTERY_IMPLIES.items():
         finding = data.get(artery)

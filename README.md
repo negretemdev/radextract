@@ -643,3 +643,20 @@ One command over the hospital export, one report per row, run on the laptop only
 - Time on the laptop, from the measured test latencies: gemma about 8 s per negative report and 18 s per positive one, gpt-oss about 81 s per positive one: roughly 10 to 11 hours for gemma over 3,940 reports, plus 9 to 18 hours of gpt-oss depending on how many are positive.
 - Checked against a stand-in export with the user's 35 columns (tab and comma separated, Windows line endings, multi-line reports, duplicates, an empty row) and fake gemma and gpt-oss servers answering from the ground truth: original columns and rows unchanged and in order, 0 present values different from the truth, flags exactly where a disagreement was planted, identical output after a pilot-then-continue, a half-written last row, and a real Ctrl+C; a second run during the first refused; a changed input refused. No real model has run it yet; the pilot is the first real test.
 - The rulebook now names REASON FOR EXAM and CLINICAL HISTORY next to INDICATION as text that never counts, because the export's reports open with "Reason for exam (per EHR order)".
+
+### First 20 real reports (pilot, 2026-10-09), reviewed by hand
+
+The pilot output (redacted, only `ReportBody` kept) was read report by report against the conventions above. 16 reports have no embolism and 4 have one; both models found all 4 and raised no false alarm.
+
+| | as run | with the repairs below |
+|---|---|---|
+| reports without an embolism right on every embolism field | 16/16 | 16/16 |
+| reports with an embolism right on every embolism field | 0/4 (all 4 flagged) | 3/4 (the models agree, not flagged) |
+| reports flagged for review | 4 | 1 |
+
+- All four positive reports were flagged because of three repeatable gemma habits: it rolled "subsegmental" up to segmental, both overall and for the lobe (rows 5 and 9); it took "acute" from the exam title "CT CHEST PULMONARY ANGIOGRAM (ACUTE)" (row 11); it called recanalized emboli chronic without the word chronic, and "partially occluding" occlusive (row 10). gpt-oss was right on all 8 cells where the two disagreed.
+- Repairs in code (`schema_ctpa.normalize`), no extra model time: segmental fields need the word "segmental" itself and `pe_subsegmental` the word "subsegmental" in the quote or a sentence containing it; `pe_acute` and `pe_chronic` need their word in a sentence that also names the clot (embolus, thrombus, clot, filling defect, PE), which the title never does; an occlusive answer quoted from "partially occluding/occlusive" becomes nonocclusive. On the 50 synthetic reports these repairs change nothing, neither the ground truth nor either model's laptop answers.
+- Where both models read a report, gpt-oss's answer is now kept on a disagreement (the row is still flagged).
+- Row 10 stays flagged: a study degraded by motion (gemma missed suboptimal) with a "partially occluding" clot (gpt-oss missed nonocclusive). That is the kind of report a person should read.
+- Other things seen, none of which changes a present/absent value: gemma sometimes negates right heart strain with a quote that is not in the report ("no strain") or borrowed from another sentence, and shortens quotes with "...".
+- The repairs were written after reading these same 20 reports, so the next batch is the real test of them.
