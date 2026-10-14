@@ -666,3 +666,11 @@ The pilot output (redacted, only `ReportBody` kept) was read report by report ag
     uv run flag_summary.py --input "C:\data\combined_extracted.csv"
 
 Reads a `run_reports.py` output (also after Excel re-saved it) and prints counts only: rows, rows with an embolism, rows flagged, and for every field the models disagreed on, how many reports, which model said present, and the row numbers in the user's own file. It also counts flagged reports whose disagreements are all outside the embolism fields, which is how many reviews a flag limited to the embolism fields would remove. Nothing from the reports or quotes is printed, so the output can be shared. Checked on a synthetic stand-in output with known disagreements, including a quote crafted to look like another field.
+
+### Settling the disagreements by hand (`review_disputes.py`)
+
+    uv run review_disputes.py --input "C:\data\combined_extracted.csv"
+
+A local page (server on 127.0.0.1 only, nothing loaded from the internet) that shows, for every flagged report, the report text and each field the two models disagreed on: both answers side by side with their quotes highlighted in the report. Choose the left model (gemma4:26b), the right model (gpt-oss:20b) or Other with a note; keys left arrow, right arrow, O, up and down. Every choice is appended at once to `<input name>_adjudication.csv` (time, row, field, choice, both answers and quotes), so stopping loses nothing and the next start continues; the latest choice for a field counts. "Write reviewed file" or `--write-reviewed` writes `<input name>_reviewed.csv`: the extracted file with the choices applied to `_present`, `_mentioned` and `_evidence` (keeping Excel's TRUE/FALSE style if present), plus `review_status` and `review_notes`.
+
+Both answers come from `disputed_fields`, which `run_reports.py` writes for every disagreement: each model's answer and quote. Fields not listed there got the same answer from both models. Checked on a synthetic stand-in output with planted disagreements (a quote with parentheses and separators included), choices saved and reloaded after a restart, and the reviewed file changing exactly the decided cells.
